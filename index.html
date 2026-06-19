@@ -100,6 +100,15 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 .prod:active{border-color:var(--accent)}
 .prod .pn{font-weight:600;font-size:.92rem;line-height:1.2}
 .prod .pp{color:var(--accent-2);font-weight:700;font-family:'Space Grotesk'}
+.search-bar{padding:.7rem 1rem;border-bottom:1px solid var(--border);flex-shrink:0}
+.search-bar input{font-size:1.05rem;padding:.85rem 1rem}
+.search-results{flex:1;overflow-y:auto;padding:.6rem}
+.sr{display:flex;align-items:center;gap:.75rem;padding:.85rem 1rem;border:1px solid var(--border);
+  border-radius:var(--radius-sm);margin-bottom:.45rem;background:var(--surface)}
+.sr.sel{border-color:var(--accent);background:var(--surface-2)}
+.sr .sr-n{flex:1;font-weight:600}
+.sr .sr-p{color:var(--accent-2);font-weight:700;font-family:'Space Grotesk'}
+.ci.sel{background:var(--surface-2);border-radius:8px;margin:0 -.4rem;padding-left:.4rem;padding-right:.4rem}
 .cart{width:340px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
 .cart-items{flex:1;overflow-y:auto;padding:.8rem}
 .cart-empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;font-size:.9rem}
@@ -291,8 +300,10 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   </div>
   <div class="pos-body">
     <div class="pos-products">
+      <div class="search-bar"><input id="prod-search" placeholder="Buscar producto… (Enter carga · +/− cantidad)" autocomplete="off" inputmode="search"></div>
       <div class="cats" id="cats"></div>
       <div class="prod-grid" id="prod-grid"><div class="spin"></div></div>
+      <div class="search-results" id="search-results" style="display:none"></div>
     </div>
     <div class="cart" id="cart">
       <div class="cart-handle" onclick="toggleCart()">
@@ -352,7 +363,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.1";  // ← subir este número con cada cambio
+const VERSION = "1.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -363,7 +374,8 @@ const PAGOS = [
   {k:'cortesia',     n:'Cortesía'},
 ];
 
-let ST = { admin:null, barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[] };
+let ST = { admin:null, barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null };
+let searchMatches=[], searchSel=0;
 
 /* ---------- helpers ---------- */
 const $ = id => document.getElementById(id);
@@ -498,10 +510,12 @@ async function enterPOS(){
   $('pos-barra').textContent=ST.barra.nombre;
   $('pos-cajero').textContent='Cajero: '+ST.cajero.nombre;
   $('pos-dot').style.background=barColor(ST.barra);
-  ST.cart=[]; renderCart();
+  ST.cart=[]; ST.cartSel=null; renderCart();
+  $('prod-search').value=''; onSearch();
   go('pos');
   if(!ST.productos.length) await loadProductos();
   else renderCats();
+  setTimeout(()=>$('prod-search').focus(),100);
 }
 async function loadProductos(){
   $('prod-grid').innerHTML='<div class="spin"></div>';
@@ -535,26 +549,64 @@ function renderProds(){
 function addCart(p){
   const ex=ST.cart.find(i=>i.producto_id===p.id);
   if(ex) ex.cantidad++; else ST.cart.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:1});
+  ST.cartSel=p.id;
   renderCart();
 }
 function chgQty(pid,d){
   const it=ST.cart.find(i=>i.producto_id===pid); if(!it)return;
-  it.cantidad+=d; if(it.cantidad<=0) ST.cart=ST.cart.filter(i=>i.producto_id!==pid);
+  it.cantidad+=d;
+  if(it.cantidad<=0){ ST.cart=ST.cart.filter(i=>i.producto_id!==pid); if(ST.cartSel===pid) ST.cartSel=ST.cart.length?ST.cart[ST.cart.length-1].producto_id:null; }
   renderCart();
 }
+function adjustSel(d){
+  if(!ST.cart.length) return;
+  const pid = ST.cartSel || ST.cart[ST.cart.length-1].producto_id;
+  chgQty(pid,d);
+}
+/* ---------- BÚSQUEDA POR TECLADO ---------- */
+function onSearch(){
+  const q=$('prod-search').value.trim().toLowerCase();
+  if(!q){ $('search-results').style.display='none'; $('cats').style.display=''; $('prod-grid').style.display=''; return; }
+  $('cats').style.display='none'; $('prod-grid').style.display='none'; $('search-results').style.display='';
+  searchMatches=ST.productos.filter(p=>p.nombre.toLowerCase().includes(q)||p.categoria.toLowerCase().includes(q)).slice(0,30);
+  searchSel=0; renderSearchResults();
+}
+function renderSearchResults(){
+  const c=$('search-results');
+  if(!searchMatches.length){ c.innerHTML='<div class="empty">Sin resultados. Seguí escribiendo o revisá el nombre.</div>'; return; }
+  c.innerHTML='';
+  searchMatches.forEach((p,i)=>{
+    const el=document.createElement('div'); el.className='sr'+(i===searchSel?' sel':'');
+    el.innerHTML=`<div class="sr-n">${p.nombre}</div><div class="sr-p num">${money(p.precio)}</div>`;
+    el.onclick=()=>{ addCart(p); clearSearch(); };
+    c.appendChild(el);
+  });
+  const sel=c.querySelector('.sr.sel'); if(sel) sel.scrollIntoView({block:'nearest'});
+}
+function clearSearch(){ $('prod-search').value=''; onSearch(); $('prod-search').focus(); }
+$('prod-search').addEventListener('input', onSearch);
+$('prod-search').addEventListener('keydown', e=>{
+  if(e.key==='ArrowDown'){ e.preventDefault(); if(searchMatches.length){ searchSel=Math.min(searchSel+1,searchMatches.length-1); renderSearchResults(); } }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); if(searchMatches.length){ searchSel=Math.max(searchSel-1,0); renderSearchResults(); } }
+  else if(e.key==='Enter'){ e.preventDefault(); if(searchMatches[searchSel]){ addCart(searchMatches[searchSel]); clearSearch(); } }
+  else if(e.key==='Escape'){ clearSearch(); }
+  else if((e.key==='+'||e.key==='-') && $('prod-search').value===''){ e.preventDefault(); adjustSel(e.key==='+'?1:-1); }
+});
 function cartTotal(){ return ST.cart.reduce((s,i)=>s+i.precio*i.cantidad,0); }
 function renderCart(){
   const c=$('cart-items');
-  if(!ST.cart.length){ c.innerHTML='<div class="cart-empty">Tocá un producto para empezar a cargar.</div>'; }
+  if(!ST.cart.length){ c.innerHTML='<div class="cart-empty">Buscá un producto y apretá Enter, o tocá uno de la lista.</div>'; }
   else{
     c.innerHTML='';
     ST.cart.forEach(i=>{
-      const el=document.createElement('div'); el.className='ci';
+      const el=document.createElement('div'); el.className='ci'+(i.producto_id===ST.cartSel?' sel':'');
       el.innerHTML=`<div class="ci-n"><div class="nm">${i.nombre}</div><div class="pr num">${money(i.precio)} c/u</div></div>
         <div class="qty"><button>−</button><span class="q num">${i.cantidad}</span><button>+</button></div>
         <div class="num" style="font-weight:600;min-width:60px;text-align:right">${money(i.precio*i.cantidad)}</div>`;
       const [minus,plus]=el.querySelectorAll('button');
-      minus.onclick=()=>chgQty(i.producto_id,-1); plus.onclick=()=>chgQty(i.producto_id,1);
+      minus.onclick=()=>{ ST.cartSel=i.producto_id; chgQty(i.producto_id,-1); };
+      plus.onclick=()=>{ ST.cartSel=i.producto_id; chgQty(i.producto_id,1); };
+      el.querySelector('.ci-n').onclick=()=>{ ST.cartSel=i.producto_id; renderCart(); };
       c.appendChild(el);
     });
   }
@@ -593,7 +645,7 @@ async function confirmarVenta(forma){
   closeModal();
   imprimirTicket(venta,items,forma);
   toast('Venta registrada · '+money(tot),'ok');
-  ST.cart=[]; renderCart(); $('cart').classList.remove('open');
+  ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
 }
 function imprimirTicket(venta,items,forma){
   const fp=PAGOS.find(p=>p.k===forma)?.n||forma;
