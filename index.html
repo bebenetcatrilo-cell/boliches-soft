@@ -155,6 +155,27 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 .tabbar button.active{color:var(--accent)}
 .tabbar .ic{font-size:1.3rem;line-height:1}
 
+/* drawer lateral derecho */
+.menu-btn{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  width:44px;height:44px;font-size:1.3rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:60}
+.drawer-bg.active{display:block}
+.drawer{position:fixed;top:0;right:0;height:100%;width:290px;max-width:86vw;background:var(--surface);
+  border-left:1px solid var(--border);transform:translateX(100%);transition:transform .25s;z-index:61;
+  display:flex;flex-direction:column;padding:1rem}
+.drawer.active{transform:translateX(0)}
+@media (prefers-reduced-motion:reduce){.drawer{transition:none}}
+.drawer-head{padding:.4rem .6rem 1rem;border-bottom:1px solid var(--border);margin-bottom:.6rem}
+.drawer-head .dt{font-family:'Space Grotesk';font-weight:700;font-size:1.1rem}
+.drawer-head .dt span{color:var(--accent)}
+.drawer-head .ds{font-size:.8rem;color:var(--muted);margin-top:.15rem}
+.drawer-items{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+.drawer-item{display:flex;align-items:center;gap:.75rem;padding:.95rem .7rem;border-radius:var(--radius-sm);
+  font-weight:600;width:100%;text-align:left;background:transparent;font-size:.98rem}
+.drawer-item:active{background:var(--surface-2)}
+.drawer-item.danger{color:var(--danger)}
+.drawer-sec{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:1rem .7rem .3rem}
+
 /* toast */
 .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%) translateY(120%);
   background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:.75rem 1.3rem;
@@ -237,7 +258,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 <div class="screen" id="scr-pin">
   <div class="app-header">
     <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="loadBarras()">‹</button>
-    <div><div class="ttl" id="pin-barra">Barra</div><div class="sub">Ingresá tu PIN de cajero</div></div>
+    <div><div class="ttl" id="pin-barra">Barra</div><div class="sub">Ingresá tu PIN y tocá ✓</div></div>
   </div>
   <div class="center-box">
     <div style="width:100%;max-width:300px">
@@ -266,7 +287,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
     <div class="dot" id="pos-dot"></div>
     <div><div class="ttl" id="pos-barra">Barra</div><div class="sub" id="pos-cajero">Cajero</div></div>
     <div class="spacer"></div>
-    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .9rem" onclick="go('home')">Cambiar</button>
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
   <div class="pos-body">
     <div class="pos-products">
@@ -285,10 +306,6 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
       </div>
     </div>
   </div>
-  <div class="tabbar">
-    <button class="active" onclick="posTab('vender',this)"><span class="ic">🛒</span>Vender</button>
-    <button onclick="posTab('caja',this);loadCaja()"><span class="ic">💵</span>Caja</button>
-  </div>
 </div>
 
 <!-- CAJA -->
@@ -297,29 +314,30 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
     <div class="dot" id="caja-dot"></div>
     <div><div class="ttl" id="caja-barra">Caja</div><div class="sub" id="caja-cajero"></div></div>
     <div class="spacer"></div>
-    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .9rem" onclick="go('pos')">‹ Volver</button>
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .7rem" onclick="go('pos')">‹</button>
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
   <div class="scroll pad" id="caja-body"><div class="spin"></div></div>
-  <div class="tabbar">
-    <button onclick="go('pos')"><span class="ic">🛒</span>Vender</button>
-    <button class="active"><span class="ic">💵</span>Caja</button>
-  </div>
 </div>
 
 <!-- ADMIN -->
 <div class="screen" id="scr-admin">
   <div class="app-header">
-    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="go('home')">‹</button>
-    <div class="ttl">Administración</div>
+    <div class="ttl" id="admin-ttl">Administración</div>
+    <div class="spacer"></div>
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
   <div class="scroll pad" id="admin-body"></div>
-  <div class="tabbar">
-    <button class="active" onclick="adminTab('central',this)"><span class="ic">📊</span>Caja noche</button>
-    <button onclick="adminTab('barras',this)"><span class="ic">🍺</span>Barras</button>
-    <button onclick="adminTab('productos',this)"><span class="ic">🏷️</span>Productos</button>
-    <button onclick="adminTab('cajeros',this)"><span class="ic">👤</span>Cajeros</button>
-  </div>
 </div>
+
+<div class="drawer-bg" id="drawer-bg" onclick="closeDrawer()"></div>
+<nav class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="dt">Boliches<span>Soft</span></div>
+    <div class="ds" id="drawer-sub"></div>
+  </div>
+  <div class="drawer-items" id="drawer-items"></div>
+</nav>
 
 <div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
@@ -367,7 +385,31 @@ $('btn-login').onclick = async ()=>{
   if(error){ $('login-msg').textContent='No pudimos entrar: revisá email y contraseña.'; return; }
   $('login-msg').textContent=''; await afterLogin();
 };
-$('btn-logout').onclick = async ()=>{ await sb.auth.signOut(); clearTerminal(); location.reload(); };
+async function logout(){ closeDrawer(); await sb.auth.signOut(); clearTerminal(); location.reload(); }
+$('btn-logout').onclick = logout;
+
+/* ---------- DRAWER (menú lateral derecho) ---------- */
+function openDrawer(){ buildDrawer(); $('drawer-bg').classList.add('active'); $('drawer').classList.add('active'); }
+function closeDrawer(){ $('drawer-bg').classList.remove('active'); $('drawer').classList.remove('active'); }
+function buildDrawer(){
+  $('drawer-sub').textContent = ST.barra ? (ST.barra.nombre + (ST.cajero?' · '+ST.cajero.nombre:'')) : (ST.admin?.email||'');
+  let h='';
+  if(ST.caja){
+    h+=`<button class="drawer-item" onclick="closeDrawer();enterPOS()">🛒 Vender</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();loadCaja()">💵 Caja y cierre</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🔄 Cambiar de barra</button>`;
+  } else {
+    h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🍺 Operar una barra</button>`;
+  }
+  h+=`<div class="drawer-sec">Administración</div>`;
+  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
+  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras</button>`;
+  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
+  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajeros')">👤 Cajeros</button>`;
+  h+=`<div style="flex:1"></div>`;
+  h+=`<button class="drawer-item danger" onclick="logout()">🚪 Salir</button>`;
+  $('drawer-items').innerHTML=h;
+}
 
 async function afterLogin(){
   const {data:{user}} = await sb.auth.getUser();
@@ -416,10 +458,14 @@ function openPin(){ pinBuf=''; renderPin(); $('pin-barra').textContent=ST.barra.
 function renderPin(){ let h=''; for(let i=0;i<6;i++) h+=`<div class="pin-dot${i<pinBuf.length?' on':''}"></div>`; $('pin-display').innerHTML=h; }
 function buildPad(){
   const pad=$('pinpad'); pad.innerHTML='';
-  ['1','2','3','4','5','6','7','8','9','C','0','⌫'].forEach(k=>{
+  ['1','2','3','4','5','6','7','8','9','⌫','0','✓'].forEach(k=>{
     const b=document.createElement('button'); b.textContent=k;
-    b.onclick=()=>{ if(k==='C')pinBuf=''; else if(k==='⌫')pinBuf=pinBuf.slice(0,-1); else if(pinBuf.length<6)pinBuf+=k;
-      renderPin(); if(pinBuf.length===6) submitPin(); };
+    if(k==='✓'){ b.style.background='var(--cash)'; b.style.color='#053123'; }
+    b.onclick=()=>{
+      if(k==='⌫'){ pinBuf=pinBuf.slice(0,-1); renderPin(); return; }
+      if(k==='✓'){ if(pinBuf.length>=4) submitPin(); else toast('El PIN tiene al menos 4 dígitos','err'); return; }
+      if(pinBuf.length<6){ pinBuf+=k; renderPin(); if(pinBuf.length===6) submitPin(); }
+    };
     pad.appendChild(b);
   });
 }
@@ -755,7 +801,7 @@ function cajeroModal(c){
   c=c||{nombre:'',pin:'',activo:true};
   modal(`<h3>${c.id?'Editar':'Nuevo'} cajero</h3>
     <div class="field"><label>Nombre</label><input id="cj-nombre" value="${c.nombre}"></div>
-    <div class="field"><label>PIN (6 dígitos)</label><input id="cj-pin" inputmode="numeric" maxlength="6" value="${c.pin||''}"></div>
+    <div class="field"><label>PIN (4 a 6 dígitos)</label><input id="cj-pin" inputmode="numeric" maxlength="6" value="${c.pin||''}"></div>
     <div class="field"><label><input type="checkbox" id="cj-activo" ${c.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
     <button class="btn btn-primary btn-block" onclick="saveCajero(${c.id||'null'})">Guardar</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
@@ -764,7 +810,7 @@ async function saveCajero(id){
   const pin=$('cj-pin').value.trim();
   const rec={nombre:$('cj-nombre').value.trim(),pin,activo:$('cj-activo').checked,rol:'cajero'};
   if(!rec.nombre){ toast('Poné un nombre','err'); return; }
-  if(!/^\d{6}$/.test(pin)){ toast('El PIN tiene que ser de 6 dígitos','err'); return; }
+  if(!/^\d{4,6}$/.test(pin)){ toast('El PIN tiene que ser de 4 a 6 dígitos','err'); return; }
   const q=id? sb.from('usuarios').update(rec).eq('id',id) : sb.from('usuarios').insert(rec);
   const {error}=await q; if(error){ toast('No se pudo guardar (¿PIN repetido?)','err'); return; }
   closeModal(); toast('Cajero guardado','ok'); admCajeros();
