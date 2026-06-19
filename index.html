@@ -14,7 +14,7 @@
   --bg:#0E0E14; --surface:#1A1A24; --surface-2:#20202E; --border:#2E2E3E;
   --text:#F2F2F7; --muted:#9A9AAD; --accent:#FF2E88; --accent-2:#14E0C8;
   --cash:#2EE6A8; --warn:#FFB020; --danger:#FF4D4D;
-  --radius:14px; --radius-sm:10px;
+  --radius:14px; --radius-sm:10px; --side:264px;
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -169,10 +169,17 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   width:44px;height:44px;font-size:1.3rem;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:60}
 .drawer-bg.active{display:block}
-.drawer{position:fixed;top:0;right:0;height:100%;width:290px;max-width:86vw;background:var(--surface);
+.drawer{position:fixed;top:0;right:0;height:100%;width:var(--side);max-width:86vw;background:var(--surface);
   border-left:1px solid var(--border);transform:translateX(100%);transition:transform .25s;z-index:61;
   display:flex;flex-direction:column;padding:1rem}
 .drawer.active{transform:translateX(0)}
+/* En escritorio, ya logueado, el menú queda fijo a la derecha y las pantallas dejan lugar */
+@media(min-width:769px){
+  .menu-btn{display:none}
+  body.logged .drawer{transform:none}
+  body.logged .drawer-bg{display:none!important}
+  body.logged .screen{right:var(--side)}
+}
 @media (prefers-reduced-motion:reduce){.drawer{transition:none}}
 .drawer-head{padding:.4rem .6rem 1rem;border-bottom:1px solid var(--border);margin-bottom:.6rem}
 .drawer-head .dt{font-family:'Space Grotesk';font-weight:700;font-size:1.1rem}
@@ -255,8 +262,9 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 <!-- TERMINAL SETUP -->
 <div class="screen" id="scr-terminal">
   <div class="app-header">
-    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="go('home')">‹</button>
     <div><div class="ttl">Elegí tu barra</div><div class="sub">Abrí o retomá la caja de tu sector</div></div>
+    <div class="spacer"></div>
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
   <div class="scroll pad">
     <div class="barras-grid" id="barras-grid"><div class="spin"></div></div>
@@ -363,7 +371,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.2";  // ← subir este número con cada cambio
+const VERSION = "1.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -399,7 +407,7 @@ $('btn-login').onclick = async ()=>{
   if(error){ $('login-msg').textContent='No pudimos entrar: revisá email y contraseña.'; return; }
   $('login-msg').textContent=''; await afterLogin();
 };
-async function logout(){ closeDrawer(); await sb.auth.signOut(); clearTerminal(); location.reload(); }
+async function logout(){ closeDrawer(); document.body.classList.remove('logged'); await sb.auth.signOut(); clearTerminal(); location.reload(); }
 $('btn-logout').onclick = logout;
 
 /* ---------- DRAWER (menú lateral derecho) ---------- */
@@ -430,22 +438,23 @@ async function afterLogin(){
   if(!user){ go('login'); return; }
   const {data:perfil} = await sb.from('usuarios').select('*').eq('auth_id',user.id).maybeSingle();
   ST.admin = perfil || {nombre:user.email, rol:'admin'};
+  document.body.classList.add('logged');
+  buildDrawer();
   // intentar retomar terminal guardada
   const saved = localStorage.getItem('bs_term');
   if(saved){
     try{ const t=JSON.parse(saved);
-      // validar que la caja siga abierta
       const {data:c} = await sb.from('caja').select('*').eq('id',t.caja?.id).eq('estado','abierta').maybeSingle();
       if(c){ ST.barra=t.barra; ST.cajero=t.cajero; ST.caja=c; enterPOS(); return; }
       else clearTerminal();
     }catch(e){ clearTerminal(); }
   }
-  go('home');
+  loadBarras();
 }
 
 /* ---------- TERMINAL: elegir barra ---------- */
 async function loadBarras(){
-  go('terminal');
+  go('terminal'); buildDrawer();
   $('barras-grid').innerHTML='<div class="spin"></div>';
   const {data:barras,error} = await sb.from('barras').select('*').eq('activa',true).order('orden');
   if(error){ $('barras-grid').innerHTML='<div class="empty">No pudimos cargar las barras.</div>'; return; }
@@ -512,7 +521,7 @@ async function enterPOS(){
   $('pos-dot').style.background=barColor(ST.barra);
   ST.cart=[]; ST.cartSel=null; renderCart();
   $('prod-search').value=''; onSearch();
-  go('pos');
+  go('pos'); buildDrawer();
   if(!ST.productos.length) await loadProductos();
   else renderCats();
   setTimeout(()=>$('prod-search').focus(),100);
@@ -665,7 +674,7 @@ function imprimirTicket(venta,items,forma){
 
 /* ---------- CAJA (movimientos + cierre) ---------- */
 async function loadCaja(){
-  go('caja');
+  go('caja'); buildDrawer();
   $('caja-barra').textContent='Caja · '+ST.barra.nombre;
   $('caja-cajero').textContent='Cajero: '+ST.cajero.nombre;
   $('caja-dot').style.background=barColor(ST.barra);
@@ -728,7 +737,7 @@ async function cerrarCaja(){
   const txt = dif===0?'Caja cerrada justa.':(dif>0?`Sobró ${money(dif)}.`:`Faltó ${money(Math.abs(dif))}.`);
   toast('Caja cerrada · '+txt,'ok');
   clearTerminal(); ST.caja=null; ST.cajero=null;
-  go('home');
+  buildDrawer(); loadBarras();
 }
 
 /* ---------- ADMIN ---------- */
