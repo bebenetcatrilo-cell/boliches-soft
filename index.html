@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Boliches Soft</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+/* ===== CONFIG: pegá acá las credenciales de tu proyecto Supabase ===== */
+:root{
+  --bg:#0E0E14; --surface:#1A1A24; --surface-2:#20202E; --border:#2E2E3E;
+  --text:#F2F2F7; --muted:#9A9AAD; --accent:#FF2E88; --accent-2:#14E0C8;
+  --cash:#2EE6A8; --warn:#FFB020; --danger:#FF4D4D;
+  --radius:14px; --radius-sm:10px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);
+  font-size:16px;line-height:1.4;overflow:hidden;
+}
+.num{font-variant-numeric:tabular-nums}
+h1,h2,h3,.display{font-family:'Space Grotesk',sans-serif;letter-spacing:-.01em}
+button{font-family:inherit;font-size:1rem;cursor:pointer;border:none;color:inherit}
+input,select{font-family:inherit;font-size:1rem;color:var(--text);background:var(--surface-2);
+  border:1px solid var(--border);border-radius:var(--radius-sm);padding:.7rem .85rem;width:100%}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-weight:500}
+.field{margin-bottom:.9rem}
+
+/* botones */
+.btn{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:.85rem 1.1rem;font-weight:600;display:inline-flex;align-items:center;justify-content:center;
+  gap:.5rem;transition:transform .06s,background .15s;min-height:48px}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn-accent{background:var(--accent-2);color:#062b27;border-color:var(--accent-2)}
+.btn-cash{background:var(--cash);color:#053123;border-color:var(--cash)}
+.btn-ghost{background:transparent}
+.btn-danger{background:transparent;color:var(--danger);border-color:var(--danger)}
+.btn-block{display:flex;width:100%}
+.btn-lg{padding:1.1rem;font-size:1.15rem}
+.btn:disabled{opacity:.45;pointer-events:none}
+
+/* layout */
+.screen{position:fixed;inset:0;display:none;flex-direction:column}
+.screen.active{display:flex}
+.app-header{display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;
+  background:var(--surface);border-bottom:1px solid var(--border);flex-shrink:0}
+.app-header .dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.app-header .ttl{font-weight:600;font-size:.95rem}
+.app-header .sub{font-size:.75rem;color:var(--muted)}
+.app-header .spacer{flex:1}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.pad{padding:1rem}
+.center-box{flex:1;display:flex;align-items:center;justify-content:center;padding:1.2rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem}
+.card-narrow{width:100%;max-width:400px}
+.brand{font-family:'Space Grotesk';font-weight:700;font-size:1.6rem;text-align:center;margin-bottom:.25rem}
+.brand span{color:var(--accent)}
+.tagline{text-align:center;color:var(--muted);font-size:.85rem;margin-bottom:1.5rem}
+.muted{color:var(--muted)}
+.row{display:flex;gap:.6rem}
+.row>*{flex:1}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:.6rem}
+
+/* chips barra */
+.barras-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:.7rem}
+.barra-chip{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.1rem;text-align:left;position:relative;min-height:88px;display:flex;flex-direction:column;justify-content:space-between}
+.barra-chip .bar-dot{width:14px;height:14px;border-radius:50%;margin-bottom:.5rem}
+.barra-chip .bar-name{font-weight:600;font-family:'Space Grotesk'}
+.barra-chip .bar-state{font-size:.72rem;color:var(--muted);margin-top:.25rem}
+.barra-chip.open{border-color:var(--cash)}
+.barra-chip.open .bar-state{color:var(--cash)}
+
+/* pin pad */
+.pin-display{display:flex;gap:.5rem;justify-content:center;margin:1.2rem 0}
+.pin-dot{width:14px;height:14px;border-radius:50%;border:2px solid var(--border)}
+.pin-dot.on{background:var(--accent);border-color:var(--accent)}
+.pinpad{display:grid;grid-template-columns:repeat(3,1fr);gap:.6rem}
+.pinpad button{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.1rem;font-size:1.4rem;font-weight:600;font-family:'Space Grotesk'}
+.pinpad button:active{background:var(--accent);color:#fff}
+
+/* POS */
+.pos-body{flex:1;display:flex;overflow:hidden}
+.pos-products{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.cats{display:flex;gap:.5rem;padding:.7rem 1rem;overflow-x:auto;flex-shrink:0;border-bottom:1px solid var(--border)}
+.cat-tab{background:var(--surface-2);border:1px solid var(--border);border-radius:99px;
+  padding:.5rem 1rem;font-size:.85rem;font-weight:600;white-space:nowrap;color:var(--muted)}
+.cat-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.prod-grid{flex:1;overflow-y:auto;padding:1rem;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.7rem;align-content:start}
+.prod{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:.9rem;text-align:left;display:flex;flex-direction:column;gap:.4rem;min-height:92px;justify-content:space-between}
+.prod:active{border-color:var(--accent)}
+.prod .pn{font-weight:600;font-size:.92rem;line-height:1.2}
+.prod .pp{color:var(--accent-2);font-weight:700;font-family:'Space Grotesk'}
+.cart{width:340px;background:var(--surface);border-left:1px solid var(--border);display:flex;flex-direction:column}
+.cart-items{flex:1;overflow-y:auto;padding:.8rem}
+.cart-empty{color:var(--muted);text-align:center;padding:2.5rem 1rem;font-size:.9rem}
+.ci{display:flex;align-items:center;gap:.6rem;padding:.6rem 0;border-bottom:1px solid var(--border)}
+.ci .ci-n{flex:1}
+.ci .ci-n .nm{font-weight:600;font-size:.9rem}
+.ci .ci-n .pr{color:var(--muted);font-size:.78rem}
+.qty{display:flex;align-items:center;gap:.45rem}
+.qty button{width:30px;height:30px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border);font-size:1.1rem;font-weight:700}
+.qty .q{min-width:22px;text-align:center;font-weight:600}
+.cart-foot{padding:1rem;border-top:1px solid var(--border)}
+.cart-total{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:.9rem}
+.cart-total .lbl{color:var(--muted);font-size:.9rem}
+.cart-total .amt{font-family:'Space Grotesk';font-weight:700;font-size:1.9rem}
+
+/* modal */
+.modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;
+  justify-content:center;padding:1rem;z-index:50;backdrop-filter:blur(2px)}
+.modal-bg.active{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1.4rem;width:100%;max-width:420px;max-height:90vh;overflow-y:auto}
+.modal h3{margin-bottom:1rem;font-size:1.2rem}
+.pay-grid{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem}
+.pay-opt{padding:1rem;border:1px solid var(--border);border-radius:var(--radius);background:var(--surface-2);font-weight:600;text-align:center}
+.pay-opt:active{border-color:var(--accent)}
+
+/* tables / lists */
+.list-item{display:flex;align-items:center;gap:.75rem;padding:.85rem 1rem;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:.5rem}
+.list-item .li-main{flex:1}
+.li-main .t{font-weight:600}
+.li-main .s{font-size:.78rem;color:var(--muted)}
+.sec-title{font-family:'Space Grotesk';font-weight:600;font-size:1.05rem;margin:1.3rem 0 .7rem;display:flex;align-items:center;gap:.5rem}
+.sec-title:first-child{margin-top:0}
+.tbl{width:100%;border-collapse:collapse;font-size:.85rem}
+.tbl th,.tbl td{padding:.6rem .5rem;text-align:right;border-bottom:1px solid var(--border)}
+.tbl th:first-child,.tbl td:first-child{text-align:left}
+.tbl th{color:var(--muted);font-weight:600;font-size:.72rem;text-transform:uppercase;letter-spacing:.04em}
+.tbl tfoot td{font-weight:700;font-family:'Space Grotesk';border-top:2px solid var(--border);border-bottom:none}
+.total-noche{background:linear-gradient(135deg,var(--accent),#c41f6b);border-radius:var(--radius);
+  padding:1.3rem;margin-top:1rem;display:flex;justify-content:space-between;align-items:center}
+.total-noche .l{font-size:.9rem;opacity:.9}
+.total-noche .v{font-family:'Space Grotesk';font-weight:700;font-size:1.9rem}
+
+.kpi-row{display:grid;grid-template-columns:1fr 1fr;gap:.6rem;margin-bottom:1rem}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.9rem 1rem}
+.kpi .k{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.kpi .v{font-family:'Space Grotesk';font-weight:700;font-size:1.5rem;margin-top:.2rem}
+
+.tabbar{display:flex;background:var(--surface);border-top:1px solid var(--border);flex-shrink:0}
+.tabbar button{flex:1;padding:.7rem;background:transparent;color:var(--muted);font-size:.72rem;
+  display:flex;flex-direction:column;align-items:center;gap:.2rem;font-weight:600}
+.tabbar button.active{color:var(--accent)}
+.tabbar .ic{font-size:1.3rem;line-height:1}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%) translateY(120%);
+  background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:.75rem 1.3rem;
+  font-weight:600;font-size:.9rem;z-index:100;transition:transform .25s;max-width:90vw;text-align:center}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.ok{border-color:var(--cash);color:var(--cash)}
+.toast.err{border-color:var(--danger);color:var(--danger)}
+
+.empty{text-align:center;color:var(--muted);padding:3rem 1rem}
+.spin{width:34px;height:34px;border:3px solid var(--border);border-top-color:var(--accent);
+  border-radius:50%;animation:sp .7s linear infinite;margin:2rem auto}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+@media(max-width:680px){
+  .cart{position:fixed;inset:0;top:auto;width:100%;height:70vh;border-left:none;
+    border-top:1px solid var(--border);border-radius:var(--radius) var(--radius) 0 0;transform:translateY(calc(100% - 64px));
+    transition:transform .25s;z-index:30}
+  .cart.open{transform:translateY(0)}
+  .cart-handle{display:flex;align-items:center;justify-content:space-between;padding:1rem;cursor:pointer}
+  .prod-grid{grid-template-columns:repeat(auto-fill,minmax(105px,1fr))}
+}
+@media(min-width:681px){.cart-handle{display:none}}
+
+/* ticket impresión */
+#ticket{display:none}
+@media print{
+  body *{visibility:hidden}
+  #ticket,#ticket *{visibility:visible}
+  #ticket{display:block;position:absolute;left:0;top:0;width:72mm;color:#000;font-family:'Courier New',monospace;font-size:12px;padding:4px}
+  #ticket .tc{text-align:center}
+  #ticket .tr{display:flex;justify-content:space-between}
+  #ticket hr{border:none;border-top:1px dashed #000;margin:4px 0}
+  #ticket .big{font-size:15px;font-weight:bold}
+}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="screen active" id="scr-login">
+  <div class="center-box">
+    <div class="card card-narrow">
+      <div class="brand">Boliches<span>Soft</span></div>
+      <div class="tagline">Sistema de caja · multibarras</div>
+      <div class="field"><label>Email</label><input id="login-email" type="email" autocomplete="username" placeholder="vos@boliche.com"></div>
+      <div class="field"><label>Contraseña</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
+      <button class="btn btn-primary btn-block btn-lg" id="btn-login">Entrar</button>
+      <p class="muted" style="font-size:.78rem;text-align:center;margin-top:1rem" id="login-msg"></p>
+    </div>
+  </div>
+</div>
+
+<!-- HOME (post login) -->
+<div class="screen" id="scr-home">
+  <div class="app-header">
+    <div class="brand" style="font-size:1.1rem;margin:0">Boliches<span>Soft</span></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" id="btn-logout" style="min-height:40px;padding:.5rem .9rem">Salir</button>
+  </div>
+  <div class="scroll pad">
+    <div class="sec-title">¿Qué vas a hacer?</div>
+    <button class="btn btn-primary btn-block btn-lg" style="margin-bottom:.7rem" onclick="loadBarras()">🍺 Operar una barra</button>
+    <button class="btn btn-block btn-lg" onclick="openAdmin()">⚙️ Administración</button>
+  </div>
+</div>
+
+<!-- TERMINAL SETUP -->
+<div class="screen" id="scr-terminal">
+  <div class="app-header">
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="go('home')">‹</button>
+    <div><div class="ttl">Elegí tu barra</div><div class="sub">Abrí o retomá la caja de tu sector</div></div>
+  </div>
+  <div class="scroll pad">
+    <div class="barras-grid" id="barras-grid"><div class="spin"></div></div>
+  </div>
+</div>
+
+<!-- PIN -->
+<div class="screen" id="scr-pin">
+  <div class="app-header">
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="loadBarras()">‹</button>
+    <div><div class="ttl" id="pin-barra">Barra</div><div class="sub">Ingresá tu PIN de cajero</div></div>
+  </div>
+  <div class="center-box">
+    <div style="width:100%;max-width:300px">
+      <div class="pin-display" id="pin-display"></div>
+      <div class="pinpad" id="pinpad"></div>
+    </div>
+  </div>
+</div>
+
+<!-- APERTURA CAJA -->
+<div class="screen" id="scr-apertura">
+  <div class="center-box">
+    <div class="card card-narrow">
+      <h3 id="apertura-ttl">Abrir caja</h3>
+      <p class="muted" style="font-size:.85rem;margin-bottom:1.2rem" id="apertura-sub"></p>
+      <div class="field"><label>Monto inicial en caja (efectivo)</label><input id="apertura-monto" type="number" inputmode="decimal" placeholder="0" value="0"></div>
+      <button class="btn btn-cash btn-block btn-lg" id="btn-abrir">Abrir caja</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:.6rem" onclick="loadBarras()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<!-- POS -->
+<div class="screen" id="scr-pos">
+  <div class="app-header">
+    <div class="dot" id="pos-dot"></div>
+    <div><div class="ttl" id="pos-barra">Barra</div><div class="sub" id="pos-cajero">Cajero</div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .9rem" onclick="go('home')">Cambiar</button>
+  </div>
+  <div class="pos-body">
+    <div class="pos-products">
+      <div class="cats" id="cats"></div>
+      <div class="prod-grid" id="prod-grid"><div class="spin"></div></div>
+    </div>
+    <div class="cart" id="cart">
+      <div class="cart-handle" onclick="toggleCart()">
+        <span style="font-weight:600" id="cart-count">Carrito</span>
+        <span class="num display" id="cart-mini-total" style="font-weight:700"></span>
+      </div>
+      <div class="cart-items" id="cart-items"></div>
+      <div class="cart-foot">
+        <div class="cart-total"><span class="lbl">Total</span><span class="amt num" id="cart-total">$0</span></div>
+        <button class="btn btn-cash btn-block btn-lg" id="btn-cobrar">Cobrar</button>
+      </div>
+    </div>
+  </div>
+  <div class="tabbar">
+    <button class="active" onclick="posTab('vender',this)"><span class="ic">🛒</span>Vender</button>
+    <button onclick="posTab('caja',this);loadCaja()"><span class="ic">💵</span>Caja</button>
+  </div>
+</div>
+
+<!-- CAJA -->
+<div class="screen" id="scr-caja">
+  <div class="app-header">
+    <div class="dot" id="caja-dot"></div>
+    <div><div class="ttl" id="caja-barra">Caja</div><div class="sub" id="caja-cajero"></div></div>
+    <div class="spacer"></div>
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .9rem" onclick="go('pos')">‹ Volver</button>
+  </div>
+  <div class="scroll pad" id="caja-body"><div class="spin"></div></div>
+  <div class="tabbar">
+    <button onclick="go('pos')"><span class="ic">🛒</span>Vender</button>
+    <button class="active"><span class="ic">💵</span>Caja</button>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="screen" id="scr-admin">
+  <div class="app-header">
+    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="go('home')">‹</button>
+    <div class="ttl">Administración</div>
+  </div>
+  <div class="scroll pad" id="admin-body"></div>
+  <div class="tabbar">
+    <button class="active" onclick="adminTab('central',this)"><span class="ic">📊</span>Caja noche</button>
+    <button onclick="adminTab('barras',this)"><span class="ic">🍺</span>Barras</button>
+    <button onclick="adminTab('productos',this)"><span class="ic">🏷️</span>Productos</button>
+    <button onclick="adminTab('cajeros',this)"><span class="ic">👤</span>Cajeros</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-bg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+<div id="ticket"></div>
+
+<script>
+/* ╔═══════════════════════════════════════════════════════════════╗
+   ║  CONFIG — pegá las credenciales de tu proyecto Supabase aquí   ║
+   ╚═══════════════════════════════════════════════════════════════╝ */
+const SUPABASE_URL  = "https://gakgvcsksskzemzomhkp.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdha2d2Y3Nrc3NremVtem9taGtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTYxNjksImV4cCI6MjA5NzM3MjE2OX0.vtG6HJQK4HAbqwF2h4WRK-3-M-FLTa4Tv_1AkgTKkJs";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
+const PAGOS = [
+  {k:'efectivo',     n:'Efectivo'},
+  {k:'transferencia',n:'Transferencia'},
+  {k:'mercadopago',  n:'Mercado Pago'},
+  {k:'tarjeta',      n:'Tarjeta'},
+  {k:'cortesia',     n:'Cortesía'},
+];
+
+let ST = { admin:null, barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[] };
+
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const money = n => '$'+Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:0});
+const barColor = b => BAR_COLORS[(b.orden||b.id||0) % BAR_COLORS.length];
+function go(s){ document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active')); $('scr-'+s).classList.add('active'); }
+function toast(msg,type){ const t=$('toast'); t.textContent=msg; t.className='toast show '+(type||''); setTimeout(()=>t.className='toast',2200); }
+function modal(html){ $('modal').innerHTML=html; $('modal-bg').classList.add('active'); }
+function closeModal(){ $('modal-bg').classList.remove('active'); }
+$('modal-bg').addEventListener('click',e=>{ if(e.target===$('modal-bg')) closeModal(); });
+function saveTerminal(){ localStorage.setItem('bs_term', JSON.stringify({barra:ST.barra,cajero:ST.cajero,caja:ST.caja})); }
+function clearTerminal(){ localStorage.removeItem('bs_term'); }
+
+/* ---------- AUTH ---------- */
+$('btn-login').onclick = async ()=>{
+  const email=$('login-email').value.trim(), pass=$('login-pass').value;
+  if(!email||!pass){ $('login-msg').textContent='Completá email y contraseña.'; return; }
+  $('btn-login').disabled=true; $('login-msg').textContent='Entrando…';
+  const {error} = await sb.auth.signInWithPassword({email,password:pass});
+  $('btn-login').disabled=false;
+  if(error){ $('login-msg').textContent='No pudimos entrar: revisá email y contraseña.'; return; }
+  $('login-msg').textContent=''; await afterLogin();
+};
+$('btn-logout').onclick = async ()=>{ await sb.auth.signOut(); clearTerminal(); location.reload(); };
+
+async function afterLogin(){
+  const {data:{user}} = await sb.auth.getUser();
+  if(!user){ go('login'); return; }
+  const {data:perfil} = await sb.from('usuarios').select('*').eq('auth_id',user.id).maybeSingle();
+  ST.admin = perfil || {nombre:user.email, rol:'admin'};
+  // intentar retomar terminal guardada
+  const saved = localStorage.getItem('bs_term');
+  if(saved){
+    try{ const t=JSON.parse(saved);
+      // validar que la caja siga abierta
+      const {data:c} = await sb.from('caja').select('*').eq('id',t.caja?.id).eq('estado','abierta').maybeSingle();
+      if(c){ ST.barra=t.barra; ST.cajero=t.cajero; ST.caja=c; enterPOS(); return; }
+      else clearTerminal();
+    }catch(e){ clearTerminal(); }
+  }
+  go('home');
+}
+
+/* ---------- TERMINAL: elegir barra ---------- */
+async function loadBarras(){
+  go('terminal');
+  $('barras-grid').innerHTML='<div class="spin"></div>';
+  const {data:barras,error} = await sb.from('barras').select('*').eq('activa',true).order('orden');
+  if(error){ $('barras-grid').innerHTML='<div class="empty">No pudimos cargar las barras.</div>'; return; }
+  if(!barras.length){ $('barras-grid').innerHTML='<div class="empty">No hay barras activas. Activalas desde Administración.</div>'; return; }
+  const {data:abiertas} = await sb.from('caja').select('barra_id,id,monto_inicial').eq('estado','abierta');
+  const openMap = {}; (abiertas||[]).forEach(c=>openMap[c.barra_id]=c);
+  $('barras-grid').innerHTML='';
+  barras.forEach(b=>{
+    const open=openMap[b.id];
+    const el=document.createElement('button');
+    el.className='barra-chip'+(open?' open':'');
+    el.innerHTML=`<div><div class="bar-dot" style="background:${barColor(b)}"></div>
+      <div class="bar-name">${b.nombre}</div></div>
+      <div class="bar-state">${open?'● Caja abierta':'Cerrada · tocá para abrir'}</div>`;
+    el.onclick=()=>chooseBarra(b,open);
+    $('barras-grid').appendChild(el);
+  });
+}
+function chooseBarra(b,openCaja){ ST.barra=b; ST._pendingCaja=openCaja; openPin(); }
+
+/* ---------- PIN ---------- */
+let pinBuf='';
+function openPin(){ pinBuf=''; renderPin(); $('pin-barra').textContent=ST.barra.nombre; buildPad(); go('pin'); }
+function renderPin(){ let h=''; for(let i=0;i<6;i++) h+=`<div class="pin-dot${i<pinBuf.length?' on':''}"></div>`; $('pin-display').innerHTML=h; }
+function buildPad(){
+  const pad=$('pinpad'); pad.innerHTML='';
+  ['1','2','3','4','5','6','7','8','9','C','0','⌫'].forEach(k=>{
+    const b=document.createElement('button'); b.textContent=k;
+    b.onclick=()=>{ if(k==='C')pinBuf=''; else if(k==='⌫')pinBuf=pinBuf.slice(0,-1); else if(pinBuf.length<6)pinBuf+=k;
+      renderPin(); if(pinBuf.length===6) submitPin(); };
+    pad.appendChild(b);
+  });
+}
+async function submitPin(){
+  const {data:caj} = await sb.from('usuarios').select('*').eq('pin',pinBuf).eq('activo',true).maybeSingle();
+  if(!caj){ toast('PIN incorrecto','err'); pinBuf=''; renderPin(); return; }
+  ST.cajero=caj;
+  if(ST._pendingCaja){ // retomar caja abierta
+    const {data:c}=await sb.from('caja').select('*').eq('id',ST._pendingCaja.id).maybeSingle();
+    ST.caja=c; saveTerminal(); enterPOS();
+  } else {
+    $('apertura-ttl').textContent='Abrir caja · '+ST.barra.nombre;
+    $('apertura-sub').textContent='Cajero: '+caj.nombre;
+    $('apertura-monto').value='0'; go('apertura');
+  }
+}
+$('btn-abrir').onclick = async ()=>{
+  const monto=parseFloat($('apertura-monto').value)||0;
+  $('btn-abrir').disabled=true;
+  const {data,error}=await sb.from('caja').insert({barra_id:ST.barra.id,usuario_id:ST.cajero.id,monto_inicial:monto,estado:'abierta'}).select().single();
+  $('btn-abrir').disabled=false;
+  if(error){ toast('No se pudo abrir (¿ya hay una caja abierta en esta barra?)','err'); return; }
+  ST.caja=data; saveTerminal(); toast('Caja abierta','ok'); enterPOS();
+};
+
+/* ---------- POS ---------- */
+async function enterPOS(){
+  $('pos-barra').textContent=ST.barra.nombre;
+  $('pos-cajero').textContent='Cajero: '+ST.cajero.nombre;
+  $('pos-dot').style.background=barColor(ST.barra);
+  ST.cart=[]; renderCart();
+  go('pos');
+  if(!ST.productos.length) await loadProductos();
+  else renderCats();
+}
+async function loadProductos(){
+  $('prod-grid').innerHTML='<div class="spin"></div>';
+  const {data,error}=await sb.from('productos').select('*').eq('activo',true).order('categoria').order('nombre');
+  if(error){ $('prod-grid').innerHTML='<div class="empty">No pudimos cargar los productos.</div>'; return; }
+  ST.productos=data;
+  ST.cats=[...new Set(data.map(p=>p.categoria))];
+  ST.catActiva=ST.cats[0]||null;
+  renderCats();
+}
+function renderCats(){
+  $('cats').innerHTML='';
+  ST.cats.forEach(c=>{
+    const b=document.createElement('button'); b.className='cat-tab'+(c===ST.catActiva?' active':''); b.textContent=c;
+    b.onclick=()=>{ ST.catActiva=c; renderCats(); renderProds(); };
+    $('cats').appendChild(b);
+  });
+  renderProds();
+}
+function renderProds(){
+  const list=ST.productos.filter(p=>p.categoria===ST.catActiva);
+  if(!list.length){ $('prod-grid').innerHTML='<div class="empty">Sin productos en esta categoría.</div>'; return; }
+  $('prod-grid').innerHTML='';
+  list.forEach(p=>{
+    const el=document.createElement('button'); el.className='prod';
+    el.innerHTML=`<div class="pn">${p.nombre}</div><div class="pp num">${money(p.precio)}</div>`;
+    el.onclick=()=>addCart(p);
+    $('prod-grid').appendChild(el);
+  });
+}
+function addCart(p){
+  const ex=ST.cart.find(i=>i.producto_id===p.id);
+  if(ex) ex.cantidad++; else ST.cart.push({producto_id:p.id,nombre:p.nombre,precio:Number(p.precio),cantidad:1});
+  renderCart();
+}
+function chgQty(pid,d){
+  const it=ST.cart.find(i=>i.producto_id===pid); if(!it)return;
+  it.cantidad+=d; if(it.cantidad<=0) ST.cart=ST.cart.filter(i=>i.producto_id!==pid);
+  renderCart();
+}
+function cartTotal(){ return ST.cart.reduce((s,i)=>s+i.precio*i.cantidad,0); }
+function renderCart(){
+  const c=$('cart-items');
+  if(!ST.cart.length){ c.innerHTML='<div class="cart-empty">Tocá un producto para empezar a cargar.</div>'; }
+  else{
+    c.innerHTML='';
+    ST.cart.forEach(i=>{
+      const el=document.createElement('div'); el.className='ci';
+      el.innerHTML=`<div class="ci-n"><div class="nm">${i.nombre}</div><div class="pr num">${money(i.precio)} c/u</div></div>
+        <div class="qty"><button>−</button><span class="q num">${i.cantidad}</span><button>+</button></div>
+        <div class="num" style="font-weight:600;min-width:60px;text-align:right">${money(i.precio*i.cantidad)}</div>`;
+      const [minus,plus]=el.querySelectorAll('button');
+      minus.onclick=()=>chgQty(i.producto_id,-1); plus.onclick=()=>chgQty(i.producto_id,1);
+      c.appendChild(el);
+    });
+  }
+  const tot=cartTotal();
+  $('cart-total').textContent=money(tot);
+  $('cart-mini-total').textContent=money(tot);
+  const cnt=ST.cart.reduce((s,i)=>s+i.cantidad,0);
+  $('cart-count').textContent=cnt?`Carrito · ${cnt}`:'Carrito';
+  $('btn-cobrar').disabled=!ST.cart.length;
+}
+function toggleCart(){ $('cart').classList.toggle('open'); }
+function posTab(t,btn){
+  document.querySelectorAll('#scr-pos .tabbar button').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+}
+
+/* ---------- COBRAR ---------- */
+$('btn-cobrar').onclick=()=>{
+  const tot=cartTotal();
+  modal(`<h3>Cobrar ${money(tot)}</h3>
+    <p class="muted" style="margin-bottom:1rem;font-size:.85rem">Elegí el medio de pago</p>
+    <div class="pay-grid">${PAGOS.map(p=>`<button class="pay-opt" onclick="confirmarVenta('${p.k}')">${p.n}</button>`).join('')}</div>
+    <button class="btn btn-ghost btn-block" onclick="closeModal()">Cancelar</button>`);
+};
+async function confirmarVenta(forma){
+  const tot=cartTotal();
+  modal('<div class="spin"></div>');
+  const {data:venta,error}=await sb.from('ventas').insert({
+    caja_id:ST.caja.id, barra_id:ST.barra.id, usuario_id:ST.cajero.id,
+    total:tot, forma_pago:forma, estado:'cerrada'
+  }).select().single();
+  if(error){ closeModal(); toast('No se pudo registrar la venta','err'); return; }
+  const items=ST.cart.map(i=>({venta_id:venta.id,producto_id:i.producto_id,nombre:i.nombre,
+    cantidad:i.cantidad,precio_unitario:i.precio,subtotal:i.precio*i.cantidad}));
+  await sb.from('ventas_items').insert(items);
+  closeModal();
+  imprimirTicket(venta,items,forma);
+  toast('Venta registrada · '+money(tot),'ok');
+  ST.cart=[]; renderCart(); $('cart').classList.remove('open');
+}
+function imprimirTicket(venta,items,forma){
+  const fp=PAGOS.find(p=>p.k===forma)?.n||forma;
+  $('ticket').innerHTML=`
+    <div class="tc big">WIKEND</div>
+    <div class="tc">${ST.barra.nombre}</div>
+    <div class="tc">${new Date().toLocaleString('es-AR')}</div>
+    <hr>
+    ${items.map(i=>`<div class="tr"><span>${i.cantidad}x ${i.nombre}</span><span>${money(i.subtotal)}</span></div>`).join('')}
+    <hr>
+    <div class="tr big"><span>TOTAL</span><span>${money(venta.total)}</span></div>
+    <div class="tr"><span>Pago</span><span>${fp}</span></div>
+    <div class="tr"><span>Cajero</span><span>${ST.cajero.nombre}</span></div>
+    <hr><div class="tc">¡Gracias!</div>`;
+  window.print();
+}
+
+/* ---------- CAJA (movimientos + cierre) ---------- */
+async function loadCaja(){
+  go('caja');
+  $('caja-barra').textContent='Caja · '+ST.barra.nombre;
+  $('caja-cajero').textContent='Cajero: '+ST.cajero.nombre;
+  $('caja-dot').style.background=barColor(ST.barra);
+  $('caja-body').innerHTML='<div class="spin"></div>';
+  const [{data:ventas},{data:movs}] = await Promise.all([
+    sb.from('ventas').select('total,forma_pago').eq('caja_id',ST.caja.id).eq('estado','cerrada'),
+    sb.from('caja_movimientos').select('*').eq('caja_id',ST.caja.id).order('created_at',{ascending:false})
+  ]);
+  const porPago={}; let totalVentas=0;
+  PAGOS.forEach(p=>porPago[p.k]=0);
+  (ventas||[]).forEach(v=>{ porPago[v.forma_pago]=(porPago[v.forma_pago]||0)+Number(v.total); totalVentas+=Number(v.total); });
+  const ingresos=(movs||[]).filter(m=>m.tipo==='ingreso').reduce((s,m)=>s+Number(m.monto),0);
+  const egresos =(movs||[]).filter(m=>m.tipo==='egreso').reduce((s,m)=>s+Number(m.monto),0);
+  const espEfectivo = Number(ST.caja.monto_inicial) + porPago.efectivo + ingresos - egresos;
+  ST._cierre={espEfectivo,totalVentas,porPago,ingresos,egresos};
+
+  $('caja-body').innerHTML=`
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">Ventas</div><div class="v num">${money(totalVentas)}</div></div>
+      <div class="kpi"><div class="k">Efectivo esperado</div><div class="v num" style="color:var(--cash)">${money(espEfectivo)}</div></div>
+    </div>
+    <div class="sec-title">Por medio de pago</div>
+    ${PAGOS.map(p=>`<div class="list-item"><div class="li-main"><div class="t">${p.n}</div></div><div class="num" style="font-weight:600">${money(porPago[p.k])}</div></div>`).join('')}
+    <div class="sec-title">Movimientos de caja</div>
+    <div class="row" style="margin-bottom:.8rem">
+      <button class="btn btn-accent" onclick="movModal('ingreso')">+ Ingreso</button>
+      <button class="btn" onclick="movModal('egreso')">− Egreso</button>
+    </div>
+    ${(movs&&movs.length)? movs.map(m=>`<div class="list-item"><div class="li-main"><div class="t">${m.tipo==='ingreso'?'Ingreso':'Egreso'} · ${money(m.monto)}</div><div class="s">${m.concepto||'—'}</div></div></div>`).join('') : '<p class="muted" style="font-size:.85rem">Sin movimientos.</p>'}
+    <div style="height:1.5rem"></div>
+    <button class="btn btn-danger btn-block btn-lg" onclick="cerrarCajaModal()">Cerrar caja de ${ST.barra.nombre}</button>
+    <div style="height:1rem"></div>`;
+}
+function movModal(tipo){
+  modal(`<h3>${tipo==='ingreso'?'Ingreso':'Egreso'} de caja</h3>
+    <div class="field"><label>Monto</label><input id="mov-monto" type="number" inputmode="decimal" placeholder="0"></div>
+    <div class="field"><label>Concepto</label><input id="mov-concepto" placeholder="ej: pago a proveedor"></div>
+    <button class="btn btn-primary btn-block" onclick="saveMov('${tipo}')">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveMov(tipo){
+  const monto=parseFloat($('mov-monto').value)||0; if(monto<=0){ toast('Poné un monto','err'); return; }
+  await sb.from('caja_movimientos').insert({caja_id:ST.caja.id,tipo,monto,concepto:$('mov-concepto').value.trim(),usuario_id:ST.cajero.id});
+  closeModal(); toast('Movimiento guardado','ok'); loadCaja();
+}
+function cerrarCajaModal(){
+  const c=ST._cierre;
+  modal(`<h3>Cerrar caja</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Contá el efectivo de la caja y cargá el total.</p>
+    <div class="list-item"><div class="li-main"><div class="t">Efectivo esperado</div></div><div class="num" style="font-weight:600;color:var(--cash)">${money(c.espEfectivo)}</div></div>
+    <div class="field" style="margin-top:1rem"><label>Efectivo contado</label><input id="cierre-contado" type="number" inputmode="decimal" placeholder="0"></div>
+    <button class="btn btn-danger btn-block btn-lg" onclick="cerrarCaja()">Confirmar cierre</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function cerrarCaja(){
+  const contado=parseFloat($('cierre-contado').value)||0;
+  const dif=contado-ST._cierre.espEfectivo;
+  await sb.from('caja').update({estado:'cerrada',monto_contado:contado,diferencia:dif,fecha_cierre:new Date().toISOString()}).eq('id',ST.caja.id);
+  closeModal();
+  const txt = dif===0?'Caja cerrada justa.':(dif>0?`Sobró ${money(dif)}.`:`Faltó ${money(Math.abs(dif))}.`);
+  toast('Caja cerrada · '+txt,'ok');
+  clearTerminal(); ST.caja=null; ST.cajero=null;
+  go('home');
+}
+
+/* ---------- ADMIN ---------- */
+function openAdmin(){ go('admin'); adminTab('central'); }
+function adminTab(t,btn){
+  if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  if(t==='central') admCentral();
+  if(t==='barras') admBarras();
+  if(t==='productos') admProductos();
+  if(t==='cajeros') admCajeros();
+}
+function nightRange(dateStr){ // ventana 18:00 del día → 12:00 del siguiente
+  const d=new Date(dateStr+'T18:00:00'); const e=new Date(d); e.setDate(e.getDate()+1); e.setHours(12,0,0,0);
+  return [d.toISOString(),e.toISOString()];
+}
+async function admCentral(){
+  const body=$('admin-body');
+  const today=new Date().toISOString().slice(0,10);
+  body.innerHTML=`<div class="field"><label>Noche del</label><input type="date" id="central-fecha" value="${today}"></div><div id="central-data"><div class="spin"></div></div>`;
+  $('central-fecha').onchange=renderCentral; renderCentral();
+}
+async function renderCentral(){
+  const fecha=$('central-fecha').value;
+  const [ini,fin]=nightRange(fecha);
+  $('central-data').innerHTML='<div class="spin"></div>';
+  const {data:ventas}=await sb.from('ventas').select('total,forma_pago,barra_id,estado').eq('estado','cerrada').gte('created_at',ini).lt('created_at',fin);
+  const {data:barras}=await sb.from('barras').select('*').order('orden');
+  const {data:cierre}=await sb.from('cierres_noche').select('*').eq('fecha',fecha).maybeSingle();
+  const bmap={}; (barras||[]).forEach(b=>bmap[b.id]={nombre:b.nombre,efectivo:0,transferencia:0,mercadopago:0,tarjeta:0,cortesia:0,total:0});
+  (ventas||[]).forEach(v=>{ const r=bmap[v.barra_id]; if(!r)return; r[v.forma_pago]+=Number(v.total); if(v.forma_pago!=='cortesia') r.total+=Number(v.total); });
+  const rows=Object.values(bmap).filter(r=>r.total||r.cortesia);
+  const sum=k=>rows.reduce((s,r)=>s+r[k],0);
+  const totalBarras=sum('total');
+  const entradas = cierre?Number(cierre.entradas_manual):0;
+  const guarda   = cierre?Number(cierre.guardarropa_manual):0;
+  const totalNoche=totalBarras+entradas+guarda;
+  $('central-data').innerHTML=`
+    ${rows.length?`<div style="overflow-x:auto"><table class="tbl">
+      <thead><tr><th>Sector</th><th>Efvo</th><th>Transf</th><th>MP</th><th>Tarj</th><th>Total</th></tr></thead>
+      <tbody>${rows.map(r=>`<tr><td>${r.nombre}</td><td class="num">${money(r.efectivo)}</td><td class="num">${money(r.transferencia)}</td><td class="num">${money(r.mercadopago)}</td><td class="num">${money(r.tarjeta)}</td><td class="num">${money(r.total)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Barras</td><td class="num">${money(sum('efectivo'))}</td><td class="num">${money(sum('transferencia'))}</td><td class="num">${money(sum('mercadopago'))}</td><td class="num">${money(sum('tarjeta'))}</td><td class="num">${money(totalBarras)}</td></tr></tfoot>
+    </table></div>
+    ${sum('cortesia')?`<p class="muted" style="font-size:.78rem;margin-top:.5rem">Cortesías (no suman): ${money(sum('cortesia'))}</p>`:''}`
+    :'<div class="empty">Todavía no hay ventas en esta noche.</div>'}
+    <div class="sec-title">Cargar al cierre</div>
+    <div class="grid-2">
+      <div class="field"><label>Entradas (ScanPass)</label><input id="c-entradas" type="number" inputmode="decimal" value="${entradas}"></div>
+      <div class="field"><label>Guardarropa</label><input id="c-guarda" type="number" inputmode="decimal" value="${guarda}"></div>
+    </div>
+    <button class="btn btn-block" onclick="saveCierre('${fecha}')">Guardar cierre de noche</button>
+    <div class="total-noche"><div class="l">Total noche</div><div class="v num">${money(totalNoche)}</div></div>
+    <div style="height:1rem"></div>`;
+}
+async function saveCierre(fecha){
+  const entradas=parseFloat($('c-entradas').value)||0;
+  const guarda=parseFloat($('c-guarda').value)||0;
+  const {error}=await sb.from('cierres_noche').upsert({fecha,entradas_manual:entradas,guardarropa_manual:guarda,usuario_id:ST.admin?.id||null},{onConflict:'fecha'});
+  if(error){ toast('No se pudo guardar','err'); return; }
+  toast('Cierre de noche guardado','ok'); renderCentral();
+}
+
+async function admBarras(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data}=await sb.from('barras').select('*').order('orden');
+  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="barraModal()">+ Nueva barra</button>
+    ${data.map(b=>`<div class="list-item"><div class="bar-dot" style="background:${barColor(b)};width:14px;height:14px;border-radius:50%"></div>
+      <div class="li-main"><div class="t">${b.nombre}${b.es_puerta?' · Puerta':''}</div><div class="s">${b.activa?'Activa':'Inactiva'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick='barraModal(${JSON.stringify(b)})'>Editar</button></div>`).join('')}`;
+}
+function barraModal(b){
+  b=b||{nombre:'',activa:true,es_puerta:false,orden:0};
+  modal(`<h3>${b.id?'Editar':'Nueva'} barra</h3>
+    <div class="field"><label>Nombre</label><input id="b-nombre" value="${b.nombre}"></div>
+    <div class="field"><label>Orden</label><input id="b-orden" type="number" value="${b.orden||0}"></div>
+    <div class="field"><label><input type="checkbox" id="b-puerta" ${b.es_puerta?'checked':''} style="width:auto;margin-right:.4rem">Es la Puerta (cobra entradas)</label></div>
+    <div class="field"><label><input type="checkbox" id="b-activa" ${b.activa?'checked':''} style="width:auto;margin-right:.4rem">Activa esta noche</label></div>
+    <button class="btn btn-primary btn-block" onclick="saveBarra(${b.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveBarra(id){
+  const rec={nombre:$('b-nombre').value.trim(),orden:parseInt($('b-orden').value)||0,es_puerta:$('b-puerta').checked,activa:$('b-activa').checked};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  const q = id? sb.from('barras').update(rec).eq('id',id) : sb.from('barras').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
+  closeModal(); toast('Barra guardada','ok'); admBarras();
+}
+
+async function admProductos(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data}=await sb.from('productos').select('*').order('categoria').order('nombre');
+  ST.productos=[]; // invalidar cache del POS
+  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="prodModal()">+ Nuevo producto</button>
+    ${data.map(p=>`<div class="list-item"><div class="li-main"><div class="t">${p.nombre}</div><div class="s">${p.categoria} · ${p.activo?'activo':'inactivo'}</div></div>
+      <div class="num" style="font-weight:600;margin-right:.5rem">${money(p.precio)}</div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick='prodModal(${JSON.stringify(p)})'>Editar</button></div>`).join('')}`;
+}
+function prodModal(p){
+  p=p||{categoria:'',nombre:'',precio:0,activo:true};
+  modal(`<h3>${p.id?'Editar':'Nuevo'} producto</h3>
+    <div class="field"><label>Nombre</label><input id="p-nombre" value="${p.nombre}"></div>
+    <div class="field"><label>Categoría</label><input id="p-cat" value="${p.categoria}" placeholder="Tragos, Cervezas, Entrada…"></div>
+    <div class="field"><label>Precio</label><input id="p-precio" type="number" inputmode="decimal" value="${p.precio}"></div>
+    <div class="field"><label><input type="checkbox" id="p-activo" ${p.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
+    <button class="btn btn-primary btn-block" onclick="saveProd(${p.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveProd(id){
+  const rec={nombre:$('p-nombre').value.trim(),categoria:$('p-cat').value.trim()||'General',precio:parseFloat($('p-precio').value)||0,activo:$('p-activo').checked};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  const q=id? sb.from('productos').update(rec).eq('id',id) : sb.from('productos').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
+  closeModal(); toast('Producto guardado','ok'); admProductos();
+}
+
+async function admCajeros(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data}=await sb.from('usuarios').select('*').eq('rol','cajero').order('nombre');
+  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="cajeroModal()">+ Nuevo cajero</button>
+    ${data.map(c=>`<div class="list-item"><div class="li-main"><div class="t">${c.nombre}</div><div class="s">PIN ${c.pin} · ${c.activo?'activo':'inactivo'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick='cajeroModal(${JSON.stringify(c)})'>Editar</button></div>`).join('')}
+    <p class="muted" style="font-size:.78rem;margin-top:1rem">El PIN es de 6 dígitos. Los cajeros entran con PIN; vos (admin) con email.</p>`;
+}
+function cajeroModal(c){
+  c=c||{nombre:'',pin:'',activo:true};
+  modal(`<h3>${c.id?'Editar':'Nuevo'} cajero</h3>
+    <div class="field"><label>Nombre</label><input id="cj-nombre" value="${c.nombre}"></div>
+    <div class="field"><label>PIN (6 dígitos)</label><input id="cj-pin" inputmode="numeric" maxlength="6" value="${c.pin||''}"></div>
+    <div class="field"><label><input type="checkbox" id="cj-activo" ${c.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
+    <button class="btn btn-primary btn-block" onclick="saveCajero(${c.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveCajero(id){
+  const pin=$('cj-pin').value.trim();
+  const rec={nombre:$('cj-nombre').value.trim(),pin,activo:$('cj-activo').checked,rol:'cajero'};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  if(!/^\d{6}$/.test(pin)){ toast('El PIN tiene que ser de 6 dígitos','err'); return; }
+  const q=id? sb.from('usuarios').update(rec).eq('id',id) : sb.from('usuarios').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar (¿PIN repetido?)','err'); return; }
+  closeModal(); toast('Cajero guardado','ok'); admCajeros();
+}
+
+/* ---------- BOOT ---------- */
+(async ()=>{
+  if(SUPABASE_URL.startsWith('TU_')){ $('login-msg').textContent='⚠️ Falta pegar las credenciales de Supabase en el código.'; return; }
+  const {data:{session}}=await sb.auth.getSession();
+  if(session) afterLogin();
+})();
+</script>
+</body>
+</html>
