@@ -220,7 +220,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   <div class="center-box">
     <div class="card card-narrow">
       <div class="brand">Boliches<span>Soft</span></div>
-      <div class="tagline">Sistema de caja · multibarras</div>
+      <div class="tagline">Sistema de caja · multibarras · <span id="ver-login"></span></div>
       <div class="field"><label>Email</label><input id="login-email" type="email" autocomplete="username" placeholder="vos@boliche.com"></div>
       <div class="field"><label>Contraseña</label><input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••"></div>
       <button class="btn btn-primary btn-block btn-lg" id="btn-login">Entrar</button>
@@ -333,7 +333,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 <div class="drawer-bg" id="drawer-bg" onclick="closeDrawer()"></div>
 <nav class="drawer" id="drawer">
   <div class="drawer-head">
-    <div class="dt">Boliches<span>Soft</span></div>
+    <div class="dt">Boliches<span>Soft</span> <span style="font-size:.72rem;color:var(--muted);font-weight:500" id="drawer-ver"></span></div>
     <div class="ds" id="drawer-sub"></div>
   </div>
   <div class="drawer-items" id="drawer-items"></div>
@@ -351,6 +351,8 @@ const SUPABASE_URL  = "https://gakgvcsksskzemzomhkp.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdha2d2Y3Nrc3NremVtem9taGtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTYxNjksImV4cCI6MjA5NzM3MjE2OX0.vtG6HJQK4HAbqwF2h4WRK-3-M-FLTa4Tv_1AkgTKkJs";
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+const VERSION = "1.1";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -818,6 +820,8 @@ async function saveCajero(id){
 
 /* ---------- BOOT ---------- */
 (async ()=>{
+  $('ver-login').textContent='v'+VERSION;
+  $('drawer-ver').textContent='v'+VERSION;
   if(SUPABASE_URL.startsWith('TU_')){ $('login-msg').textContent='⚠️ Falta pegar las credenciales de Supabase en el código.'; return; }
   const {data:{session}}=await sb.auth.getSession();
   if(session) afterLogin();
