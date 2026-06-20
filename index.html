@@ -371,7 +371,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.3";  // ← subir este número con cada cambio
+const VERSION = "1.7";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -382,7 +382,7 @@ const PAGOS = [
   {k:'cortesia',     n:'Cortesía'},
 ];
 
-let ST = { admin:null, barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null };
+let ST = { admin:null, modo:'admin', barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null, categorias:[] };
 let searchMatches=[], searchSel=0;
 
 /* ---------- helpers ---------- */
@@ -414,22 +414,28 @@ $('btn-logout').onclick = logout;
 function openDrawer(){ buildDrawer(); $('drawer-bg').classList.add('active'); $('drawer').classList.add('active'); }
 function closeDrawer(){ $('drawer-bg').classList.remove('active'); $('drawer').classList.remove('active'); }
 function buildDrawer(){
-  $('drawer-sub').textContent = ST.barra ? (ST.barra.nombre + (ST.cajero?' · '+ST.cajero.nombre:'')) : (ST.admin?.email||'');
+  const esAdmin = ST.modo==='admin';
+  $('drawer-sub').textContent = esAdmin ? (ST.admin?.email||'Administración') : (ST.barra ? (ST.barra.nombre + (ST.cajero?' · '+ST.cajero.nombre:'')) : 'Terminal de venta');
   let h='';
-  if(ST.caja){
-    h+=`<button class="drawer-item" onclick="closeDrawer();enterPOS()">🛒 Vender</button>`;
-    h+=`<button class="drawer-item" onclick="closeDrawer();loadCaja()">💵 Caja y cierre</button>`;
-    h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🔄 Cambiar de barra</button>`;
+  if(!esAdmin){
+    if(ST.caja){
+      h+=`<button class="drawer-item" onclick="closeDrawer();enterPOS()">🛒 Vender</button>`;
+      h+=`<button class="drawer-item" onclick="closeDrawer();loadCaja()">💵 Caja y cierre</button>`;
+      h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🔄 Cambiar de barra</button>`;
+    } else {
+      h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🍺 Abrir caja y vender</button>`;
+    }
   } else {
-    h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🍺 Operar una barra</button>`;
+    h+=`<div class="drawer-sec">Administración</div>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras / terminales</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('categorias')">🗂️ Categorías</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajeros')">👤 Cajeros</button>`;
   }
-  h+=`<div class="drawer-sec">Administración</div>`;
-  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
-  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras</button>`;
-  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
-  h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajeros')">👤 Cajeros</button>`;
   h+=`<div style="flex:1"></div>`;
-  h+=`<button class="drawer-item danger" onclick="logout()">🚪 Salir</button>`;
+  h+=`<button class="drawer-item danger" onclick="logout()">🚪 Cerrar sesión</button>`;
   $('drawer-items').innerHTML=h;
 }
 
@@ -437,10 +443,12 @@ async function afterLogin(){
   const {data:{user}} = await sb.auth.getUser();
   if(!user){ go('login'); return; }
   const {data:perfil} = await sb.from('usuarios').select('*').eq('auth_id',user.id).maybeSingle();
-  ST.admin = perfil || {nombre:user.email, rol:'admin'};
+  ST.admin = perfil || {nombre:user.email, email:user.email, rol:'admin'};
+  ST.modo = (ST.admin.rol==='terminal') ? 'terminal' : 'admin';
   document.body.classList.add('logged');
   buildDrawer();
-  // intentar retomar terminal guardada
+  if(ST.modo==='admin'){ go('admin'); adminTab('monitoreo'); return; }
+  // modo terminal: retomar caja abierta o ir a elegir barra
   const saved = localStorage.getItem('bs_term');
   if(saved){
     try{ const t=JSON.parse(saved);
@@ -744,14 +752,46 @@ async function cerrarCaja(){
 function openAdmin(){ go('admin'); adminTab('central'); }
 function adminTab(t,btn){
   if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  if(t==='monitoreo') admMonitoreo();
   if(t==='central') admCentral();
   if(t==='barras') admBarras();
   if(t==='productos') admProductos();
+  if(t==='categorias') admCategorias();
   if(t==='cajeros') admCajeros();
 }
 function nightRange(dateStr){ // ventana 18:00 del día → 12:00 del siguiente
   const d=new Date(dateStr+'T18:00:00'); const e=new Date(d); e.setDate(e.getDate()+1); e.setHours(12,0,0,0);
   return [d.toISOString(),e.toISOString()];
+}
+async function admMonitoreo(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data:cajas}=await sb.from('caja').select('*').eq('estado','abierta').order('barra_id');
+  if(!cajas||!cajas.length){ body.innerHTML='<div class="empty">No hay cajas abiertas en este momento.</div><button class="btn btn-block" style="margin-top:1rem" onclick="admMonitoreo()">↻ Actualizar</button>'; return; }
+  const ids=cajas.map(c=>c.id);
+  const [{data:barras},{data:usuarios},{data:ventas}]=await Promise.all([
+    sb.from('barras').select('id,nombre'),
+    sb.from('usuarios').select('id,nombre'),
+    sb.from('ventas').select('caja_id,total,forma_pago').eq('estado','cerrada').in('caja_id',ids)
+  ]);
+  const bn={}; (barras||[]).forEach(b=>bn[b.id]=b.nombre);
+  const un={}; (usuarios||[]).forEach(u=>un[u.id]=u.nombre);
+  const agg={}; ids.forEach(id=>agg[id]={total:0,efectivo:0,transferencia:0,mercadopago:0,tarjeta:0,cortesia:0});
+  (ventas||[]).forEach(v=>{ const a=agg[v.caja_id]; if(!a)return; a[v.forma_pago]+=Number(v.total); if(v.forma_pago!=='cortesia') a.total+=Number(v.total); });
+  let totalGral=0; cajas.forEach(c=>totalGral+=agg[c.id].total);
+  body.innerHTML=`
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">Cajas abiertas</div><div class="v num">${cajas.length}</div></div>
+      <div class="kpi"><div class="k">Facturado ahora</div><div class="v num" style="color:var(--cash)">${money(totalGral)}</div></div>
+    </div>
+    ${cajas.map(c=>{const a=agg[c.id];const hs=new Date(c.fecha_apertura).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      return `<div class="card" style="margin-bottom:.7rem;padding:1rem">
+        <div style="display:flex;justify-content:space-between;align-items:baseline"><div style="font-weight:700;font-family:'Space Grotesk'">${bn[c.barra_id]||'Barra'}</div><div class="num" style="font-weight:700;color:var(--cash)">${money(a.total)}</div></div>
+        <div class="muted" style="font-size:.78rem;margin:.3rem 0 .6rem">${un[c.usuario_id]||'—'} · desde ${hs}</div>
+        <div style="font-size:.76rem;color:var(--muted);display:flex;gap:.7rem;flex-wrap:wrap">
+          <span>Efvo ${money(a.efectivo)}</span><span>Transf ${money(a.transferencia)}</span><span>MP ${money(a.mercadopago)}</span><span>Tarj ${money(a.tarjeta)}</span>${a.cortesia?`<span>Cortesía ${money(a.cortesia)}</span>`:''}
+        </div></div>`;}).join('')}
+    <button class="btn btn-block" style="margin-top:.5rem" onclick="admMonitoreo()">↻ Actualizar</button>
+    <div style="height:1rem"></div>`;
 }
 async function admCentral(){
   const body=$('admin-body');
@@ -825,8 +865,13 @@ async function saveBarra(id){
   closeModal(); toast('Barra guardada','ok'); admBarras();
 }
 
+async function loadCategorias(){
+  const {data}=await sb.from('categorias').select('*').eq('activa',true).order('orden').order('nombre');
+  ST.categorias=data||[];
+}
 async function admProductos(){
   const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  await loadCategorias();
   const {data}=await sb.from('productos').select('*').order('categoria').order('nombre');
   ST.productos=[]; // invalidar cache del POS
   body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="prodModal()">+ Nuevo producto</button>
@@ -836,20 +881,51 @@ async function admProductos(){
 }
 function prodModal(p){
   p=p||{categoria:'',nombre:'',precio:0,activo:true};
+  let cats=ST.categorias.map(c=>c.nombre);
+  if(p.categoria && !cats.includes(p.categoria)) cats.unshift(p.categoria);
+  const opts=cats.map(n=>`<option value="${n}"${n===p.categoria?' selected':''}>${n}</option>`).join('');
   modal(`<h3>${p.id?'Editar':'Nuevo'} producto</h3>
     <div class="field"><label>Nombre</label><input id="p-nombre" value="${p.nombre}"></div>
-    <div class="field"><label>Categoría</label><input id="p-cat" value="${p.categoria}" placeholder="Tragos, Cervezas, Entrada…"></div>
+    <div class="field"><label>Categoría</label>
+      ${cats.length?`<select id="p-cat">${opts}</select>`:`<input id="p-cat" placeholder="(creá una categoría primero)"><p class="muted" style="font-size:.75rem;margin-top:.35rem">Tip: cargá categorías desde 🗂️ Categorías.</p>`}
+    </div>
     <div class="field"><label>Precio</label><input id="p-precio" type="number" inputmode="decimal" value="${p.precio}"></div>
     <div class="field"><label><input type="checkbox" id="p-activo" ${p.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
     <button class="btn btn-primary btn-block" onclick="saveProd(${p.id||'null'})">Guardar</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
 async function saveProd(id){
-  const rec={nombre:$('p-nombre').value.trim(),categoria:$('p-cat').value.trim()||'General',precio:parseFloat($('p-precio').value)||0,activo:$('p-activo').checked};
+  const rec={nombre:$('p-nombre').value.trim(),categoria:($('p-cat').value||'').trim()||'General',precio:parseFloat($('p-precio').value)||0,activo:$('p-activo').checked};
   if(!rec.nombre){ toast('Poné un nombre','err'); return; }
   const q=id? sb.from('productos').update(rec).eq('id',id) : sb.from('productos').insert(rec);
   const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
   closeModal(); toast('Producto guardado','ok'); admProductos();
+}
+
+/* ---------- CATEGORÍAS ---------- */
+async function admCategorias(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data}=await sb.from('categorias').select('*').order('orden').order('nombre');
+  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="categoriaModal()">+ Nueva categoría</button>
+    ${(data||[]).map(c=>`<div class="list-item"><div class="li-main"><div class="t">${c.nombre}</div><div class="s">${c.activa?'Activa':'Inactiva'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick='categoriaModal(${JSON.stringify(c)})'>Editar</button></div>`).join('')}
+    ${(!data||!data.length)?'<div class="empty">Creá tu primera categoría (ej: Tragos, Cervezas, Entrada).</div>':''}`;
+}
+function categoriaModal(c){
+  c=c||{nombre:'',orden:0,activa:true};
+  modal(`<h3>${c.id?'Editar':'Nueva'} categoría</h3>
+    <div class="field"><label>Nombre</label><input id="ct-nombre" value="${c.nombre}" placeholder="Tragos, Cervezas, Entrada…"></div>
+    <div class="field"><label>Orden</label><input id="ct-orden" type="number" value="${c.orden||0}"></div>
+    <div class="field"><label><input type="checkbox" id="ct-activa" ${c.activa?'checked':''} style="width:auto;margin-right:.4rem">Activa</label></div>
+    <button class="btn btn-primary btn-block" onclick="saveCategoria(${c.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveCategoria(id){
+  const rec={nombre:$('ct-nombre').value.trim(),orden:parseInt($('ct-orden').value)||0,activa:$('ct-activa').checked};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  const q=id? sb.from('categorias').update(rec).eq('id',id) : sb.from('categorias').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar (¿nombre repetido?)','err'); return; }
+  closeModal(); toast('Categoría guardada','ok'); admCategorias();
 }
 
 async function admCajeros(){
