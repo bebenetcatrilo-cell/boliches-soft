@@ -374,7 +374,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "2.2";  // ← subir este número con cada cambio
+const VERSION = "2.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -382,10 +382,9 @@ const PAGOS = [
   {k:'transferencia',n:'Transferencia'},
   {k:'mercadopago',  n:'Mercado Pago'},
   {k:'tarjeta',      n:'Tarjeta'},
-  {k:'cortesia',     n:'Cortesía'},
 ];
 
-let ST = { admin:null, modo:'admin', barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null, categorias:[] };
+let ST = { admin:null, modo:'admin', barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null, categorias:[], boliche:'WIKEND', evento:'' };
 let searchMatches=[], searchSel=0;
 
 /* ---------- helpers ---------- */
@@ -514,9 +513,18 @@ async function enterPOS(){
   ST.cart=[]; ST.cartSel=null; renderCart();
   $('prod-search').value=''; onSearch();
   go('pos'); buildDrawer();
+  cargarMarcaTicket();
   if(!ST.productos.length) await loadProductos();
   else renderCats();
   setTimeout(()=>$('prod-search').focus(),100);
+}
+async function cargarMarcaTicket(){
+  try{
+    const {data}=await sb.from('config').select('clave,valor').in('clave',['nombre_boliche','evento_actual']);
+    const c={}; (data||[]).forEach(r=>c[r.clave]=r.valor);
+    ST.boliche=c.nombre_boliche||'WIKEND';
+    ST.evento=c.evento_actual||'';
+  }catch(e){ ST.boliche=ST.boliche||'WIKEND'; ST.evento=ST.evento||''; }
 }
 async function loadProductos(){
   $('prod-grid').innerHTML='<div class="spin"></div>';
@@ -666,7 +674,8 @@ function imprimirTicket(venta,items,forma){
   vales.forEach((v,idx)=>{
     acum+=v.precio;
     html+=`<div class="tk">
-      <div class="tc big">WIKEND</div>
+      <div class="tc big">${ST.boliche||'WIKEND'}</div>
+      ${ST.evento?`<div class="tc">${ST.evento}</div>`:''}
       <div class="tc">${ST.barra.nombre}</div>
       <hr>
       <div class="tc">TICKET ${idx+1} / ${totalUn}</div>
@@ -729,6 +738,17 @@ async function saveMov(tipo){
   await sb.from('caja_movimientos').insert({caja_id:ST.caja.id,tipo,monto,concepto:$('mov-concepto').value.trim(),usuario_id:ST.cajero.id});
   closeModal(); toast('Movimiento guardado','ok'); loadCaja();
 }
+async function guardarDatosNoche(){
+  const boliche=$('cfg-boliche').value.trim()||'Wikend';
+  const evento=$('cfg-evento').value.trim();
+  const {error}=await sb.from('config').upsert([
+    {clave:'nombre_boliche',valor:boliche},
+    {clave:'evento_actual',valor:evento}
+  ],{onConflict:'clave'});
+  if(error){ toast('No se pudo guardar','err'); return; }
+  ST.boliche=boliche; ST.evento=evento;
+  toast('Datos de la noche guardados','ok');
+}
 async function setListaNoche(v){
   const {error}=await sb.from('config').upsert({clave:'lista_activa',valor:v},{onConflict:'clave'});
   if(error){ toast('No se pudo cambiar la lista','err'); return; }
@@ -740,10 +760,12 @@ async function admCajas(){
   const [{data:cajas},{data:barras},{data:cfg}]=await Promise.all([
     sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
     sb.from('barras').select('*').order('orden'),
-    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre'])
+    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual'])
   ]);
   const cmap={}; (cfg||[]).forEach(r=>cmap[r.clave]=r.valor);
   const la=cmap.lista_activa||'1';
+  const boliche=cmap.nombre_boliche||'Wikend';
+  const evento=cmap.evento_actual||'';
   ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
   const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
@@ -762,6 +784,12 @@ async function admCajas(){
         <button class="btn btn-danger" style="min-height:38px" onclick="admCerrarModal(${c.id})">Cerrar</button></div>`;}).join('');
   };
   body.innerHTML=`
+    <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Datos de la noche (salen en los tickets)</div>
+      <div class="field"><label>Nombre del boliche</label><input id="cfg-boliche" value="${boliche}" placeholder="Wikend"></div>
+      <div class="field"><label>Evento de esta noche</label><input id="cfg-evento" value="${evento}" placeholder="ej: Fiesta Retro"></div>
+      <button class="btn btn-accent btn-block" onclick="guardarDatosNoche()">Guardar datos de la noche</button>
+    </div>
     <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
       <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem">Lista de precios de la noche</div>
       <select id="lista-noche" onchange="setListaNoche(this.value)">
