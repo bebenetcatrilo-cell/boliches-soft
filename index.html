@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.5";  // ← subir este número con cada cambio
+const VERSION = "3.6";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -877,15 +877,33 @@ function subirLogo(input){
   reader.onload=e=>{
     const img=new Image();
     img.onload=async ()=>{
-      const maxW=260; const scale=Math.min(1,maxW/img.width);
-      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+      // analizar la imagen y recortar el margen blanco/transparente
+      const c0=document.createElement('canvas'); c0.width=img.width; c0.height=img.height;
+      const x0=c0.getContext('2d'); x0.drawImage(img,0,0);
+      let minX=0,minY=0,maxX=img.width-1,maxY=img.height-1;
+      try{
+        const data=x0.getImageData(0,0,c0.width,c0.height).data;
+        minX=img.width; minY=img.height; maxX=0; maxY=0;
+        for(let y=0;y<img.height;y++){ for(let x=0;x<img.width;x++){
+          const i=(y*img.width+x)*4, r=data[i],g=data[i+1],b=data[i+2],a=data[i+3];
+          if(a>15 && !(r>245&&g>245&&b>245)){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; }
+        }}
+        if(maxX<minX||maxY<minY){ minX=0;minY=0;maxX=img.width-1;maxY=img.height-1; }
+      }catch(err){ /* si no se puede analizar, no recorto */ }
+      const pad=6; // pequeño respiro
+      minX=Math.max(0,minX-pad); minY=Math.max(0,minY-pad);
+      maxX=Math.min(img.width-1,maxX+pad); maxY=Math.min(img.height-1,maxY+pad);
+      const cw=maxX-minX+1, ch=maxY-minY+1;
+      const maxW=260; const scale=Math.min(1,maxW/cw);
+      const w=Math.round(cw*scale), h=Math.round(ch*scale);
       const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
-      const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h);
+      ctx.drawImage(img, minX,minY,cw,ch, 0,0,w,h);
       let dataUrl=canvas.toDataURL('image/png');
-      if(dataUrl.length>600000) dataUrl=canvas.toDataURL('image/jpeg',0.8);
+      if(dataUrl.length>600000) dataUrl=canvas.toDataURL('image/jpeg',0.85);
       const {error}=await sb.from('config').upsert({clave:'logo',valor:dataUrl},{onConflict:'clave'});
       if(error){ toast('No se pudo guardar el logo','err'); return; }
-      ST.logo=dataUrl; toast('Logo guardado','ok'); admCajas();
+      ST.logo=dataUrl; toast('Logo guardado y recortado','ok'); admCajas();
     };
     img.onerror=()=>toast('No se pudo leer la imagen','err');
     img.src=e.target.result;
