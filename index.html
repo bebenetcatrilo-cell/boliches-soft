@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.6";  // ← subir este número con cada cambio
+const VERSION = "3.7";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -723,7 +723,7 @@ function imprimirTicket(tks,forma){
     acum+=Number(v.precio)||0;
     html+=`<div class="tk">
       ${ST.logo
-        ? `<div class="tc"><img src="${ST.logo}" style="max-width:55mm;margin:0 auto 3px"></div>`
+        ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
         : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`}
       ${ST.evento?`<div class="tc">${ST.evento}</div>`:''}
       <div class="tc">${ST.barra.nombre}</div>
