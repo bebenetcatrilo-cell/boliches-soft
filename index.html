@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.3";  // ← subir este número con cada cambio
+const VERSION = "3.4";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -709,6 +709,7 @@ async function confirmarVenta(forma){
   const insRes=await sb.from('tickets').insert(ticketsRows).select('numero,nombre,precio');
   if(insRes.data&&insRes.data.length) tks=insRes.data;
   else { const {data:t2}=await sb.from('tickets').select('numero,nombre,precio').eq('venta_id',venta.id).order('numero'); if(t2&&t2.length) tks=t2; }
+  await cargarMarcaTicket();
   closeModal();
   imprimirTicket(tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio})),forma);
   toast('Venta registrada · '+money(tot),'ok');
@@ -721,8 +722,9 @@ function imprimirTicket(tks,forma){
   tks.forEach((v,idx)=>{
     acum+=Number(v.precio)||0;
     html+=`<div class="tk">
-      ${ST.logo?`<div class="tc"><img src="${ST.logo}" style="max-width:55mm;margin:0 auto 2px"></div>`:''}
-      <div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>
+      ${ST.logo
+        ? `<div class="tc"><img src="${ST.logo}" style="max-width:55mm;margin:0 auto 3px"></div>`
+        : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`}
       ${ST.evento?`<div class="tc">${ST.evento}</div>`:''}
       <div class="tc">${ST.barra.nombre}</div>
       <hr>
