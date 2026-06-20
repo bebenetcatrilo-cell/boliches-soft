@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.1";  // ← subir este número con cada cambio
+const VERSION = "3.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -385,7 +385,7 @@ const PAGOS = [
   {k:'tarjeta',      n:'Tarjeta'},
 ];
 
-let ST = { admin:null, modo:'admin', barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null, categorias:[], boliche:'WIKEND', evento:'' };
+let ST = { admin:null, modo:'admin', barra:null, cajero:null, caja:null, productos:[], cats:[], catActiva:null, cart:[], cartSel:null, categorias:[], boliche:'WIKEND', evento:'', logo:'' };
 let searchMatches=[], searchSel=0;
 
 /* ---------- helpers ---------- */
@@ -560,10 +560,11 @@ async function cargarEntradasPuerta(){
 }
 async function cargarMarcaTicket(){
   try{
-    const {data}=await sb.from('config').select('clave,valor').in('clave',['nombre_boliche','evento_actual']);
+    const {data}=await sb.from('config').select('clave,valor').in('clave',['nombre_boliche','evento_actual','logo']);
     const c={}; (data||[]).forEach(r=>c[r.clave]=r.valor);
     ST.boliche=c.nombre_boliche||'WIKEND';
     ST.evento=c.evento_actual||'';
+    ST.logo=c.logo||'';
   }catch(e){ ST.boliche=ST.boliche||'WIKEND'; ST.evento=ST.evento||''; }
 }
 async function loadProductos(){
@@ -720,6 +721,7 @@ function imprimirTicket(tks,forma){
   tks.forEach((v,idx)=>{
     acum+=Number(v.precio)||0;
     html+=`<div class="tk">
+      ${ST.logo?`<div class="tc"><img src="${ST.logo}" style="max-width:55mm;margin:0 auto 2px"></div>`:''}
       <div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>
       ${ST.evento?`<div class="tc">${ST.evento}</div>`:''}
       <div class="tc">${ST.barra.nombre}</div>
@@ -728,7 +730,7 @@ function imprimirTicket(tks,forma){
       <div class="tc big">${v.nombre}</div>
       <div class="tc big">${money(v.precio)}</div>
       <hr>
-      <div class="tr big"><span>Acumulado</span><span>${money(acum)}</span></div>
+      <div class="tr" style="font-size:10px"><span>Acumulado</span><span>${money(acum)}</span></div>
       <div class="tc" style="font-size:10px">${hora}</div>
     </div>`;
   });
@@ -806,12 +808,13 @@ async function admCajas(){
   const [{data:cajas},{data:barras},{data:cfg}]=await Promise.all([
     sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
     sb.from('barras').select('*').order('orden'),
-    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual'])
+    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual','logo'])
   ]);
   const cmap={}; (cfg||[]).forEach(r=>cmap[r.clave]=r.valor);
   const la=cmap.lista_activa||'1';
   const boliche=cmap.nombre_boliche||'Wikend';
   const evento=cmap.evento_actual||'';
+  const logo=cmap.logo||'';
   ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
   const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
@@ -836,8 +839,17 @@ async function admCajas(){
               : `<div class="muted" style="font-size:.85rem;margin:.3rem 0">No hay noche abierta. Abrila desde 🌙 Noche para poder abrir cajas.</div>`}
     </div>
     <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
-      <div class="field" style="margin:0"><label>Nombre del boliche (sale en los tickets)</label><input id="cfg-boliche" value="${boliche}" placeholder="Wikend"></div>
-      <button class="btn btn-accent btn-block" style="margin-top:.6rem" onclick="guardarBoliche()">Guardar</button>
+      <div class="field"><label>Nombre del boliche (sale en los tickets)</label><input id="cfg-boliche" value="${boliche}" placeholder="Wikend"></div>
+      <button class="btn btn-accent btn-block" onclick="guardarBoliche()">Guardar nombre</button>
+      <div style="margin-top:1rem">
+        <label style="font-size:.8rem;color:var(--muted)">Logo del ticket</label>
+        <p class="muted" style="font-size:.72rem;line-height:1.45;margin:.35rem 0 .5rem">
+          Recomendado: imagen simple y de <b>alto contraste</b> (negro sobre fondo blanco o transparente), en PNG o JPG. Tamaño ideal: alrededor de <b>300 px de ancho</b> (el sistema la achica sola). Evitá degradados, fotos y detalles finos: la impresora térmica imprime en un solo color, así que lo simple se ve mejor.
+        </p>
+        ${logo?`<div style="text-align:center;margin:.5rem 0"><img src="${logo}" style="max-width:130px;background:#fff;padding:5px;border-radius:8px"></div>`:'<p class="muted" style="font-size:.8rem;margin:.4rem 0">Sin logo cargado.</p>'}
+        <input type="file" accept="image/*" id="logo-file" onchange="subirLogo(this)" style="font-size:.8rem;width:100%">
+        ${logo?'<button class="btn btn-ghost btn-block" style="margin-top:.5rem;color:#ff5a6e" onclick="quitarLogo()">Quitar logo</button>':''}
+      </div>
     </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
@@ -851,6 +863,33 @@ async function guardarBoliche(){
   const {error}=await sb.from('config').upsert({clave:'nombre_boliche',valor:boliche},{onConflict:'clave'});
   if(error){ toast('No se pudo guardar','err'); return; }
   ST.boliche=boliche; toast('Guardado','ok');
+}
+function subirLogo(input){
+  const file=input.files&&input.files[0]; if(!file) return;
+  toast('Procesando logo…','ok');
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=async ()=>{
+      const maxW=260; const scale=Math.min(1,maxW/img.width);
+      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+      const canvas=document.createElement('canvas'); canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.drawImage(img,0,0,w,h);
+      let dataUrl=canvas.toDataURL('image/png');
+      if(dataUrl.length>600000) dataUrl=canvas.toDataURL('image/jpeg',0.8);
+      const {error}=await sb.from('config').upsert({clave:'logo',valor:dataUrl},{onConflict:'clave'});
+      if(error){ toast('No se pudo guardar el logo','err'); return; }
+      ST.logo=dataUrl; toast('Logo guardado','ok'); admCajas();
+    };
+    img.onerror=()=>toast('No se pudo leer la imagen','err');
+    img.src=e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+async function quitarLogo(){
+  if(!confirm('¿Quitar el logo del ticket?')) return;
+  await sb.from('config').upsert({clave:'logo',valor:''},{onConflict:'clave'});
+  ST.logo=''; toast('Logo quitado','ok'); admCajas();
 }
 async function admAbrirModal(){
   const noche=await getNocheAbierta();
