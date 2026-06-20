@@ -372,7 +372,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.8";  // ← subir este número con cada cambio
+const VERSION = "1.9";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -889,7 +889,8 @@ async function admBarras(){
   const {data}=await sb.from('barras').select('*').order('orden');
   const fila=(b)=>`<div class="list-item"><div class="bar-dot" style="background:${barColor(b)};width:14px;height:14px;border-radius:50%"></div>
       <div class="li-main"><div class="t">${b.nombre}</div><div class="s">${b.activa?'Activa':'Inactiva'}</div></div>
-      <button class="btn btn-ghost" style="min-height:38px" onclick='barraModal(${JSON.stringify(b)})'>Editar</button></div>`;
+      <button class="btn btn-ghost" style="min-height:38px" onclick='barraModal(${JSON.stringify(b)})'>Editar</button>
+      <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick="delBarra(${b.id})">🗑</button></div>`;
   const barras=(data||[]).filter(b=>!b.es_puerta);
   const entradas=(data||[]).filter(b=>b.es_puerta);
   body.innerHTML=`
@@ -916,6 +917,12 @@ async function saveBarra(id){
   const q = id? sb.from('barras').update(rec).eq('id',id) : sb.from('barras').insert(rec);
   const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
   closeModal(); toast('Barra guardada','ok'); admBarras();
+}
+async function delBarra(id){
+  if(!confirm('¿Borrar este sector? No se puede deshacer.')) return;
+  const {error}=await sb.from('barras').delete().eq('id',id);
+  if(error){ toast('No se puede borrar: ya tiene cajas o ventas. Mejor desactivalo (Editar → destildar "Activa").','err'); return; }
+  toast('Sector borrado','ok'); admBarras();
 }
 
 async function loadCategorias(){
