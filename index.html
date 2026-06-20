@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.5";  // ← subir este número con cada cambio
+const VERSION = "4.6";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -688,7 +688,7 @@ function posTab(t,btn){
 /* ---------- COBRAR ---------- */
 $('btn-cobrar').onclick=()=>{
   const tot=cartTotal();
-  const cort = ST.esPuerta ? `<button class="btn btn-ghost btn-block" style="margin-top:.7rem;border:1px dashed var(--border)" onclick="pedirCortesia()">🎟️ Dar cortesía (con PIN)</button>` : '';
+  const cort = !ST.esPuerta ? `<button class="btn btn-ghost btn-block" style="margin-top:.7rem;border:1px dashed var(--border)" onclick="pedirCortesia()">🎁 Consumición de cortesía (con PIN)</button>` : '';
   modal(`<h3>Cobrar ${money(tot)}</h3>
     <p class="muted" style="margin-bottom:1rem;font-size:.85rem">Elegí el medio de pago</p>
     <div class="pay-grid">${PAGOS.map(p=>`<button class="pay-opt" onclick="confirmarVenta('${p.k}')">${p.n}</button>`).join('')}</div>
@@ -696,8 +696,8 @@ $('btn-cobrar').onclick=()=>{
     <button class="btn btn-ghost btn-block" style="margin-top:.6rem" onclick="closeModal()">Cancelar</button>`);
 };
 function pedirCortesia(){
-  modal(`<h3>🎟️ Cortesía</h3>
-    <p class="muted" style="font-size:.85rem;margin-bottom:.8rem">Ingresá el PIN especial para autorizarla. La cortesía es gratis: suma a la gente pero no al dinero.</p>
+  modal(`<h3>🎁 Consumición de cortesía</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:.8rem">Ingresá el PIN para autorizarla. Queda registrada (qué, quién y cuándo) pero no suma al dinero.</p>
     <input id="cort-pin" type="password" inputmode="numeric" placeholder="PIN" style="text-align:center;font-size:1.3rem;letter-spacing:.3em">
     <button class="btn btn-primary btn-block btn-lg" style="margin-top:1rem" onclick="validarCortesia()">Autorizar cortesía</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
@@ -789,18 +789,19 @@ function printArea(){
   imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
 }
 async function imprimirReporte(info,titulo,sub,sel){
-  sel=sel||{total:1,entrabar:1,barras:1,vendedor:1,pago:1,ranking:1,anulados:1};
+  sel=sel||{total:1,entrabar:1,barras:1,vendedor:1,pago:1,cortesias:1,ranking:1,anulados:1};
   await cargarMarcaTicket();
-  const {total,porPago,ranking,anulados,gente,cortesias,totalEntradas,totalBarras,barras,vendedores}=info;
+  const {total,porPago,ranking,anulados,gente,cortesias,invitaciones,totalEntradas,totalBarras,barras,vendedores,cortesiasDetalle}=info;
   const hr='<hr>';
   const fila=(a,b)=>`<div class="tr" style="font-size:13px"><span>${a}</span><span>${b}</span></div>`;
   const titBlk=(t)=>`<div class="tc" style="font-weight:900">${t}</div>`;
   let body='';
-  if(sel.total){ body+=hr+fila('Total ventas',money(total))+fila('Personas (entr.)',gente)+fila('Cortesías',cortesias)+fila('Anulados',anulados.length); }
+  if(sel.total){ body+=hr+fila('Total ventas',money(total))+fila('Personas (entr.)',gente)+fila('Invitaciones $0',invitaciones||0)+fila('Cortesías consumo',cortesias)+fila('Anulados',anulados.length); }
   if(sel.entrabar){ body+=hr+titBlk('ENTRADAS vs BARRAS')+fila('Entradas',money(totalEntradas))+fila('Barras',money(totalBarras)); }
   if(sel.barras && barras.length){ body+=hr+titBlk('POR CAJA / BARRA')+barras.map(b=>fila(b.nombre,money(b.monto))).join(''); }
   if(sel.vendedor && vendedores.length){ body+=hr+titBlk('POR VENDEDOR')+vendedores.map(v=>fila(v.nombre,money(v.monto))).join(''); }
   if(sel.pago){ body+=hr+titBlk('MEDIOS DE PAGO')+fila('Efectivo',money(porPago.efectivo))+fila('Transfer.',money(porPago.transferencia))+fila('Mercado Pago',money(porPago.mercadopago))+fila('Tarjeta',money(porPago.tarjeta)); }
+  if(sel.cortesias && cortesiasDetalle && cortesiasDetalle.length){ body+=hr+titBlk('CONSUMICIONES DE CORTESÍA')+cortesiasDetalle.map(c=>fila(c.nombre,c.cant+' u.')).join(''); }
   if(sel.ranking){ body+=hr+titBlk('RANKING')+(ranking.length? ranking.map((r,i)=>`<div style="font-size:13px;margin:2px 0"><div class="tr"><span>${i+1}. ${r.nombre} · ${money(r.precio)}</span></div><div class="tr" style="font-size:11px"><span>${r.cant} u.</span><span>${money(r.monto)}</span></div></div>`).join('') : '<div class="tc" style="font-size:12px">Sin ventas</div>'); }
   if(sel.anulados && anulados.length){ body+=hr+titBlk('ANULADOS')+anulados.map(t=>`<div class="tr" style="font-size:12px"><span>N°${t.numero} ${t.nombre}</span><span>${money(t.precio)}</span></div>`).join(''); }
   const html=`<div class="tk">
@@ -819,7 +820,7 @@ async function imprimirReporte(info,titulo,sub,sel){
 }
 function modalImprimirReporte(){
   if(!ST._repPrint){ toast('Abrí un reporte primero','err'); return; }
-  const items=[['total','Total de ventas'],['entrabar','Entradas vs Barras'],['barras','Por caja / barra'],['vendedor','Por vendedor'],['pago','Medios de pago'],['ranking','Ranking de productos'],['anulados','Tickets anulados']];
+  const items=[['total','Total de ventas'],['entrabar','Entradas vs Barras'],['barras','Por caja / barra'],['vendedor','Por vendedor'],['pago','Medios de pago'],['cortesias','Consumiciones de cortesía'],['ranking','Ranking de productos'],['anulados','Tickets anulados']];
   modal(`<h3>🖨️ Imprimir reporte</h3>
     <p class="muted" style="font-size:.85rem;margin-bottom:.7rem">Marcá lo que querés incluir:</p>
     <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1rem">
@@ -829,7 +830,7 @@ function modalImprimirReporte(){
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
 function lanzarImpresionReporte(){
-  const k=['total','entrabar','barras','vendedor','pago','ranking','anulados'];
+  const k=['total','entrabar','barras','vendedor','pago','cortesias','ranking','anulados'];
   const sel={}; k.forEach(x=>sel[x]=$('rp-'+x)?.checked);
   if(!k.some(x=>sel[x])){ toast('Marcá al menos un bloque','err'); return; }
   closeModal();
@@ -1239,14 +1240,15 @@ function procesarTickets(tks){
   const validos=(tks||[]).filter(t=>t.estado!=='anulado');
   const anulados=(tks||[]).filter(t=>t.estado==='anulado');
   let total=0; const porPago={efectivo:0,transferencia:0,mercadopago:0,tarjeta:0}; const rank={};
-  let gente=0, cortesias=0, totalEntradas=0, totalBarras=0;
-  const porBarra={}, porVendedor={};
+  let gente=0, cortesias=0, invitaciones=0, totalEntradas=0, totalBarras=0;
+  const porBarra={}, porVendedor={}, cortRank={};
   validos.forEach(t=>{
     const p=Number(t.precio)||0;
     const esCort=t.forma_pago==='cortesia';
     if(!esCort) total+=p;
     if(porPago[t.forma_pago]!=null) porPago[t.forma_pago]+=p;
-    if(t.esEntrada){ gente++; if(esCort) cortesias++; else totalEntradas+=p; }
+    if(esCort){ cortesias++; cortRank[t.nombre]=(cortRank[t.nombre]||0)+1; }
+    if(t.esEntrada){ gente++; if(p===0) invitaciones++; else totalEntradas+=p; }
     else if(!esCort){ totalBarras+=p; }
     if(!esCort){
       porBarra[t.barra]=(porBarra[t.barra]||0)+p;
@@ -1259,7 +1261,8 @@ function procesarTickets(tks){
   const ranking=Object.values(rank).sort((a,b)=>b.cant-a.cant);
   const barras=Object.entries(porBarra).map(([n,m])=>({nombre:n,monto:m})).sort((a,b)=>b.monto-a.monto);
   const vendedores=Object.entries(porVendedor).map(([n,m])=>({nombre:n,monto:m})).sort((a,b)=>b.monto-a.monto);
-  return {validos,anulados,total,porPago,ranking,gente,cortesias,totalEntradas,totalBarras,barras,vendedores};
+  const cortesiasDetalle=Object.entries(cortRank).map(([n,c])=>({nombre:n,cant:c})).sort((a,b)=>b.cant-a.cant);
+  return {validos,anulados,total,porPago,ranking,gente,cortesias,invitaciones,totalEntradas,totalBarras,barras,vendedores,cortesiasDetalle};
 }
 function renderReporte(info,cab,printMeta){
   ST._repPrint={info, titulo:(printMeta&&printMeta.titulo)||'Reporte', sub:(printMeta&&printMeta.sub)||''};
@@ -1272,8 +1275,12 @@ function renderReporte(info,cab,printMeta){
       <div class="kpi"><div class="k">👥 Personas (entradas)</div><div class="v num">${info.gente}</div></div>
     </div>
     <div class="kpi-row">
-      <div class="kpi"><div class="k">🎟️ Cortesías</div><div class="v num">${info.cortesias}</div></div>
+      <div class="kpi"><div class="k">🎫 Invitaciones ($0)</div><div class="v num">${info.invitaciones}</div></div>
+      <div class="kpi"><div class="k">🎁 Cortesías consumo</div><div class="v num">${info.cortesias}</div></div>
+    </div>
+    <div class="kpi-row">
       <div class="kpi"><div class="k">Tickets anulados</div><div class="v num" style="color:var(--danger)">${anulados.length}</div></div>
+      <div class="kpi"></div>
     </div>
     <div class="sec-title">Por medio de pago</div>
     <div style="display:flex;gap:.9rem;flex-wrap:wrap;font-size:.85rem;margin-bottom:.3rem">
@@ -1282,6 +1289,9 @@ function renderReporte(info,cab,printMeta){
       <span class="muted">MP <b style="color:var(--text)">${money(porPago.mercadopago)}</b></span>
       <span class="muted">Tarj <b style="color:var(--text)">${money(porPago.tarjeta)}</b></span>
     </div>
+    ${info.cortesiasDetalle&&info.cortesiasDetalle.length?`<div class="sec-title">🎁 Consumiciones de cortesía</div>
+    <div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Producto</th><th>Cant.</th></tr></thead>
+      <tbody>${info.cortesiasDetalle.map(c=>`<tr><td>${c.nombre}</td><td class="num">${c.cant}</td></tr>`).join('')}</tbody></table></div>`:''}
     <div class="sec-title">🏆 Ranking de productos</div>
     ${ranking.length?`<div style="overflow-x:auto"><table class="tbl">
       <thead><tr><th>#</th><th>Producto</th><th>P. unit.</th><th>Cant.</th><th>Monto</th></tr></thead>
