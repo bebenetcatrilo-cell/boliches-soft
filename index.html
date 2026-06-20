@@ -254,7 +254,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   </div>
   <div class="scroll pad">
     <div class="sec-title">¿Qué vas a hacer?</div>
-    <button class="btn btn-primary btn-block btn-lg" style="margin-bottom:.7rem" onclick="loadBarras()">🍺 Operar una barra</button>
+    <button class="btn btn-primary btn-block btn-lg" style="margin-bottom:.7rem" onclick="pinCajero()">🍺 Cobrar en una caja</button>
     <button class="btn btn-block btn-lg" onclick="openAdmin()">⚙️ Administración</button>
   </div>
 </div>
@@ -262,7 +262,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 <!-- TERMINAL SETUP -->
 <div class="screen" id="scr-terminal">
   <div class="app-header">
-    <div><div class="ttl">Elegí tu barra</div><div class="sub">Abrí o retomá la caja de tu sector</div></div>
+    <div><div class="ttl">Elegí tu caja</div><div class="sub">Tocá la caja en la que vas a cobrar</div></div>
     <div class="spacer"></div>
     <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
@@ -274,8 +274,9 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 <!-- PIN -->
 <div class="screen" id="scr-pin">
   <div class="app-header">
-    <button class="btn btn-ghost" style="min-height:40px;padding:.5rem .8rem" onclick="loadBarras()">‹</button>
-    <div><div class="ttl" id="pin-barra">Barra</div><div class="sub">Ingresá tu PIN y tocá ✓</div></div>
+    <div><div class="ttl">Ingresá tu PIN</div><div class="sub">Identificate para cobrar</div></div>
+    <div class="spacer"></div>
+    <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
   <div class="center-box">
     <div style="width:100%;max-width:300px">
@@ -293,7 +294,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
       <p class="muted" style="font-size:.85rem;margin-bottom:1.2rem" id="apertura-sub"></p>
       <div class="field"><label>Monto inicial en caja (efectivo)</label><input id="apertura-monto" type="number" inputmode="decimal" placeholder="0" value="0"></div>
       <button class="btn btn-cash btn-block btn-lg" id="btn-abrir">Abrir caja</button>
-      <button class="btn btn-ghost btn-block" style="margin-top:.6rem" onclick="loadBarras()">Cancelar</button>
+      <button class="btn btn-ghost btn-block" style="margin-top:.6rem" onclick="pinCajero()">Cancelar</button>
     </div>
   </div>
 </div>
@@ -371,7 +372,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.7";  // ← subir este número con cada cambio
+const VERSION = "1.8";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -420,16 +421,17 @@ function buildDrawer(){
   if(!esAdmin){
     if(ST.caja){
       h+=`<button class="drawer-item" onclick="closeDrawer();enterPOS()">🛒 Vender</button>`;
-      h+=`<button class="drawer-item" onclick="closeDrawer();loadCaja()">💵 Caja y cierre</button>`;
-      h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🔄 Cambiar de barra</button>`;
+      h+=`<button class="drawer-item" onclick="closeDrawer();loadCaja()">💵 Ver mi caja</button>`;
+      h+=`<button class="drawer-item" onclick="closeDrawer();loadCajasAbiertas()">🔄 Cambiar de caja</button>`;
     } else {
-      h+=`<button class="drawer-item" onclick="closeDrawer();loadBarras()">🍺 Abrir caja y vender</button>`;
+      h+=`<button class="drawer-item" onclick="closeDrawer();pinCajero()">🍺 Cobrar en una caja</button>`;
     }
   } else {
     h+=`<div class="drawer-sec">Administración</div>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajas')">🧾 Cajas</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
-    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras / terminales</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras y entradas</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('categorias')">🗂️ Categorías</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajeros')">👤 Cajeros</button>`;
@@ -448,7 +450,7 @@ async function afterLogin(){
   document.body.classList.add('logged');
   buildDrawer();
   if(ST.modo==='admin'){ go('admin'); adminTab('monitoreo'); return; }
-  // modo terminal: retomar caja abierta o ir a elegir barra
+  // modo terminal: retomar caja abierta o pedir PIN del cajero
   const saved = localStorage.getItem('bs_term');
   if(saved){
     try{ const t=JSON.parse(saved);
@@ -457,35 +459,12 @@ async function afterLogin(){
       else clearTerminal();
     }catch(e){ clearTerminal(); }
   }
-  loadBarras();
+  pinCajero();
 }
 
-/* ---------- TERMINAL: elegir barra ---------- */
-async function loadBarras(){
-  go('terminal'); buildDrawer();
-  $('barras-grid').innerHTML='<div class="spin"></div>';
-  const {data:barras,error} = await sb.from('barras').select('*').eq('activa',true).order('orden');
-  if(error){ $('barras-grid').innerHTML='<div class="empty">No pudimos cargar las barras.</div>'; return; }
-  if(!barras.length){ $('barras-grid').innerHTML='<div class="empty">No hay barras activas. Activalas desde Administración.</div>'; return; }
-  const {data:abiertas} = await sb.from('caja').select('barra_id,id,monto_inicial').eq('estado','abierta');
-  const openMap = {}; (abiertas||[]).forEach(c=>openMap[c.barra_id]=c);
-  $('barras-grid').innerHTML='';
-  barras.forEach(b=>{
-    const open=openMap[b.id];
-    const el=document.createElement('button');
-    el.className='barra-chip'+(open?' open':'');
-    el.innerHTML=`<div><div class="bar-dot" style="background:${barColor(b)}"></div>
-      <div class="bar-name">${b.nombre}</div></div>
-      <div class="bar-state">${open?'● Caja abierta':'Cerrada · tocá para abrir'}</div>`;
-    el.onclick=()=>chooseBarra(b,open);
-    $('barras-grid').appendChild(el);
-  });
-}
-function chooseBarra(b,openCaja){ ST.barra=b; ST._pendingCaja=openCaja; openPin(); }
-
-/* ---------- PIN ---------- */
+/* ---------- TERMINAL: PIN del cajero → elegir caja abierta ---------- */
 let pinBuf='';
-function openPin(){ pinBuf=''; renderPin(); $('pin-barra').textContent=ST.barra.nombre; buildPad(); go('pin'); }
+function pinCajero(){ pinBuf=''; buildPad(); renderPin(); go('pin'); }
 function renderPin(){ let h=''; for(let i=0;i<6;i++) h+=`<div class="pin-dot${i<pinBuf.length?' on':''}"></div>`; $('pin-display').innerHTML=h; }
 function buildPad(){
   const pad=$('pinpad'); pad.innerHTML='';
@@ -501,26 +480,29 @@ function buildPad(){
   });
 }
 async function submitPin(){
-  const {data:caj} = await sb.from('usuarios').select('*').eq('pin',pinBuf).eq('activo',true).maybeSingle();
+  const {data:caj} = await sb.from('usuarios').select('*').eq('pin',pinBuf).eq('activo',true).eq('rol','cajero').maybeSingle();
   if(!caj){ toast('PIN incorrecto','err'); pinBuf=''; renderPin(); return; }
-  ST.cajero=caj;
-  if(ST._pendingCaja){ // retomar caja abierta
-    const {data:c}=await sb.from('caja').select('*').eq('id',ST._pendingCaja.id).maybeSingle();
-    ST.caja=c; saveTerminal(); enterPOS();
-  } else {
-    $('apertura-ttl').textContent='Abrir caja · '+ST.barra.nombre;
-    $('apertura-sub').textContent='Cajero: '+caj.nombre;
-    $('apertura-monto').value='0'; go('apertura');
-  }
+  ST.cajero=caj; loadCajasAbiertas();
 }
-$('btn-abrir').onclick = async ()=>{
-  const monto=parseFloat($('apertura-monto').value)||0;
-  $('btn-abrir').disabled=true;
-  const {data,error}=await sb.from('caja').insert({barra_id:ST.barra.id,usuario_id:ST.cajero.id,monto_inicial:monto,estado:'abierta'}).select().single();
-  $('btn-abrir').disabled=false;
-  if(error){ toast('No se pudo abrir (¿ya hay una caja abierta en esta barra?)','err'); return; }
-  ST.caja=data; saveTerminal(); toast('Caja abierta','ok'); enterPOS();
-};
+async function loadCajasAbiertas(){
+  go('terminal'); buildDrawer();
+  $('barras-grid').innerHTML='<div class="spin"></div>';
+  const {data:cajas}=await sb.from('caja').select('*').eq('estado','abierta').order('barra_id');
+  if(!cajas||!cajas.length){ $('barras-grid').innerHTML='<div class="empty">No hay cajas abiertas todavía. El administrador tiene que abrir una caja para que puedas cobrar.</div>'; return; }
+  const {data:barras}=await sb.from('barras').select('*');
+  const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
+  $('barras-grid').innerHTML='';
+  cajas.forEach(c=>{
+    const b=bmap[c.barra_id]||{nombre:'Caja',orden:0,es_puerta:false};
+    const el=document.createElement('button'); el.className='barra-chip open';
+    el.innerHTML=`<div><div class="bar-dot" style="background:${barColor(b)}"></div>
+      <div class="bar-name">${b.nombre}</div></div>
+      <div class="bar-state">${b.es_puerta?'🎟️ Entradas':'🍺 Barra'} · tocá para cobrar</div>`;
+    el.onclick=()=>elegirCaja(c,b);
+    $('barras-grid').appendChild(el);
+  });
+}
+function elegirCaja(c,b){ ST.caja=c; ST.barra=b; saveTerminal(); enterPOS(); }
 
 /* ---------- POS ---------- */
 async function enterPOS(){
@@ -713,7 +695,7 @@ async function loadCaja(){
     </div>
     ${(movs&&movs.length)? movs.map(m=>`<div class="list-item"><div class="li-main"><div class="t">${m.tipo==='ingreso'?'Ingreso':'Egreso'} · ${money(m.monto)}</div><div class="s">${m.concepto||'—'}</div></div></div>`).join('') : '<p class="muted" style="font-size:.85rem">Sin movimientos.</p>'}
     <div style="height:1.5rem"></div>
-    <button class="btn btn-danger btn-block btn-lg" onclick="cerrarCajaModal()">Cerrar caja de ${ST.barra.nombre}</button>
+    <p class="muted" style="font-size:.82rem;text-align:center">El cierre de la caja lo hace el administrador.</p>
     <div style="height:1rem"></div>`;
 }
 function movModal(tipo){
@@ -728,24 +710,86 @@ async function saveMov(tipo){
   await sb.from('caja_movimientos').insert({caja_id:ST.caja.id,tipo,monto,concepto:$('mov-concepto').value.trim(),usuario_id:ST.cajero.id});
   closeModal(); toast('Movimiento guardado','ok'); loadCaja();
 }
-function cerrarCajaModal(){
-  const c=ST._cierre;
-  modal(`<h3>Cerrar caja</h3>
-    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Contá el efectivo de la caja y cargá el total.</p>
-    <div class="list-item"><div class="li-main"><div class="t">Efectivo esperado</div></div><div class="num" style="font-weight:600;color:var(--cash)">${money(c.espEfectivo)}</div></div>
-    <div class="field" style="margin-top:1rem"><label>Efectivo contado</label><input id="cierre-contado" type="number" inputmode="decimal" placeholder="0"></div>
-    <button class="btn btn-danger btn-block btn-lg" onclick="cerrarCaja()">Confirmar cierre</button>
+/* ---------- ADMIN · CAJAS (el admin abre y cierra todas) ---------- */
+async function admCajas(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const [{data:cajas},{data:barras}]=await Promise.all([
+    sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
+    sb.from('barras').select('*').order('orden')
+  ]);
+  const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
+  let agg={};
+  if(cajas&&cajas.length){
+    const ids=cajas.map(c=>c.id);
+    const {data:ventas}=await sb.from('ventas').select('caja_id,total,forma_pago').eq('estado','cerrada').in('caja_id',ids);
+    ids.forEach(id=>agg[id]=0);
+    (ventas||[]).forEach(v=>{ if(v.forma_pago!=='cortesia') agg[v.caja_id]=(agg[v.caja_id]||0)+Number(v.total); });
+  }
+  const grupo=(esPuerta)=>{
+    const arr=(cajas||[]).filter(c=>!!(bmap[c.barra_id]&&bmap[c.barra_id].es_puerta)===esPuerta);
+    if(!arr.length) return `<p class="muted" style="font-size:.85rem">Sin cajas abiertas.</p>`;
+    return arr.map(c=>{const b=bmap[c.barra_id]||{nombre:'—'};const hs=new Date(c.fecha_apertura).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+      return `<div class="list-item"><div class="li-main"><div class="t">${b.nombre}</div><div class="s">Fondo ${money(c.monto_inicial)} · facturado ${money(agg[c.id]||0)} · desde ${hs}</div></div>
+        <button class="btn btn-danger" style="min-height:38px" onclick="admCerrarModal(${c.id})">Cerrar</button></div>`;}).join('');
+  };
+  body.innerHTML=`
+    <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
+    <div class="sec-title">🍺 Cajas de barra</div>
+    ${grupo(false)}
+    <div class="sec-title" style="margin-top:1.2rem">🎟️ Cajas de entrada</div>
+    ${grupo(true)}
+    <div style="height:1rem"></div>`;
+}
+async function admAbrirModal(){
+  const [{data:barras},{data:abiertas}]=await Promise.all([
+    sb.from('barras').select('*').eq('activa',true).order('es_puerta').order('orden'),
+    sb.from('caja').select('barra_id').eq('estado','abierta')
+  ]);
+  const usadas=new Set((abiertas||[]).map(c=>c.barra_id));
+  const libres=(barras||[]).filter(b=>!usadas.has(b.id));
+  if(!libres.length){ toast('Todos los sectores ya tienen una caja abierta','err'); return; }
+  const opts=libres.map(b=>`<option value="${b.id}">${b.es_puerta?'🎟️ ':'🍺 '}${b.nombre}</option>`).join('');
+  modal(`<h3>Abrir caja</h3>
+    <div class="field"><label>Sector</label><select id="ac-barra">${opts}</select></div>
+    <div class="field"><label>Fondo inicial (efectivo)</label><input id="ac-fondo" type="number" inputmode="decimal" placeholder="0" value="0"></div>
+    <button class="btn btn-cash btn-block" onclick="admDoAbrir()">Abrir caja</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
-async function cerrarCaja(){
-  const contado=parseFloat($('cierre-contado').value)||0;
-  const dif=contado-ST._cierre.espEfectivo;
-  await sb.from('caja').update({estado:'cerrada',monto_contado:contado,diferencia:dif,fecha_cierre:new Date().toISOString()}).eq('id',ST.caja.id);
+async function admDoAbrir(){
+  const barra_id=parseInt($('ac-barra').value);
+  const fondo=parseFloat($('ac-fondo').value)||0;
+  const {error}=await sb.from('caja').insert({barra_id,usuario_id:ST.admin&&ST.admin.id?ST.admin.id:null,monto_inicial:fondo,estado:'abierta'});
+  if(error){ toast('No se pudo abrir (¿ya hay una caja abierta en ese sector?)','err'); return; }
+  closeModal(); toast('Caja abierta','ok'); admCajas();
+}
+async function admCerrarModal(cajaId){
+  const {data:caja}=await sb.from('caja').select('*').eq('id',cajaId).maybeSingle();
+  if(!caja){ toast('No se encontró la caja','err'); return; }
+  const {data:barra}=await sb.from('barras').select('nombre').eq('id',caja.barra_id).maybeSingle();
+  const [{data:ventas},{data:movs}]=await Promise.all([
+    sb.from('ventas').select('total,forma_pago').eq('caja_id',cajaId).eq('estado','cerrada'),
+    sb.from('caja_movimientos').select('tipo,monto').eq('caja_id',cajaId)
+  ]);
+  let efectivo=0; (ventas||[]).forEach(v=>{ if(v.forma_pago==='efectivo') efectivo+=Number(v.total); });
+  const ingresos=(movs||[]).filter(m=>m.tipo==='ingreso').reduce((s,m)=>s+Number(m.monto),0);
+  const egresos=(movs||[]).filter(m=>m.tipo==='egreso').reduce((s,m)=>s+Number(m.monto),0);
+  const esp=Number(caja.monto_inicial)+efectivo+ingresos-egresos;
+  ST._cierreAdmin={cajaId,esp};
+  modal(`<h3>Cerrar caja · ${barra?barra.nombre:''}</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Contá el efectivo de la caja y cargá el total.</p>
+    <div class="list-item"><div class="li-main"><div class="t">Efectivo esperado</div></div><div class="num" style="font-weight:600;color:var(--cash)">${money(esp)}</div></div>
+    <div class="field" style="margin-top:1rem"><label>Efectivo contado</label><input id="ac-contado" type="number" inputmode="decimal" placeholder="0"></div>
+    <button class="btn btn-danger btn-block btn-lg" onclick="admDoCerrar()">Confirmar cierre</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function admDoCerrar(){
+  const cc=ST._cierreAdmin||{};
+  const contado=parseFloat($('ac-contado').value)||0;
+  const dif=contado-cc.esp;
+  await sb.from('caja').update({estado:'cerrada',monto_contado:contado,diferencia:dif,fecha_cierre:new Date().toISOString()}).eq('id',cc.cajaId);
   closeModal();
-  const txt = dif===0?'Caja cerrada justa.':(dif>0?`Sobró ${money(dif)}.`:`Faltó ${money(Math.abs(dif))}.`);
-  toast('Caja cerrada · '+txt,'ok');
-  clearTerminal(); ST.caja=null; ST.cajero=null;
-  buildDrawer(); loadBarras();
+  const txt=dif===0?'Caja cerrada justa.':(dif>0?`Sobró ${money(dif)}.`:`Faltó ${money(Math.abs(dif))}.`);
+  toast('Caja cerrada · '+txt,'ok'); admCajas();
 }
 
 /* ---------- ADMIN ---------- */
@@ -753,6 +797,7 @@ function openAdmin(){ go('admin'); adminTab('central'); }
 function adminTab(t,btn){
   if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
   if(t==='monitoreo') admMonitoreo();
+  if(t==='cajas') admCajas();
   if(t==='central') admCentral();
   if(t==='barras') admBarras();
   if(t==='productos') admProductos();
@@ -842,17 +887,25 @@ async function saveCierre(fecha){
 async function admBarras(){
   const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
   const {data}=await sb.from('barras').select('*').order('orden');
-  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="barraModal()">+ Nueva barra</button>
-    ${data.map(b=>`<div class="list-item"><div class="bar-dot" style="background:${barColor(b)};width:14px;height:14px;border-radius:50%"></div>
-      <div class="li-main"><div class="t">${b.nombre}${b.es_puerta?' · Puerta':''}</div><div class="s">${b.activa?'Activa':'Inactiva'}</div></div>
-      <button class="btn btn-ghost" style="min-height:38px" onclick='barraModal(${JSON.stringify(b)})'>Editar</button></div>`).join('')}`;
+  const fila=(b)=>`<div class="list-item"><div class="bar-dot" style="background:${barColor(b)};width:14px;height:14px;border-radius:50%"></div>
+      <div class="li-main"><div class="t">${b.nombre}</div><div class="s">${b.activa?'Activa':'Inactiva'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick='barraModal(${JSON.stringify(b)})'>Editar</button></div>`;
+  const barras=(data||[]).filter(b=>!b.es_puerta);
+  const entradas=(data||[]).filter(b=>b.es_puerta);
+  body.innerHTML=`
+    <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="barraModal()">+ Nuevo sector</button>
+    <div class="sec-title">🍺 Barras</div>
+    ${barras.length?barras.map(fila).join(''):'<p class="muted" style="font-size:.85rem">Sin barras.</p>'}
+    <div class="sec-title" style="margin-top:1.2rem">🎟️ Entradas</div>
+    ${entradas.length?entradas.map(fila).join(''):'<p class="muted" style="font-size:.85rem">Sin puntos de entrada. Creá uno y marcá "Es punto de entrada".</p>'}
+    <div style="height:1rem"></div>`;
 }
 function barraModal(b){
   b=b||{nombre:'',activa:true,es_puerta:false,orden:0};
   modal(`<h3>${b.id?'Editar':'Nueva'} barra</h3>
     <div class="field"><label>Nombre</label><input id="b-nombre" value="${b.nombre}"></div>
     <div class="field"><label>Orden</label><input id="b-orden" type="number" value="${b.orden||0}"></div>
-    <div class="field"><label><input type="checkbox" id="b-puerta" ${b.es_puerta?'checked':''} style="width:auto;margin-right:.4rem">Es la Puerta (cobra entradas)</label></div>
+    <div class="field"><label><input type="checkbox" id="b-puerta" ${b.es_puerta?'checked':''} style="width:auto;margin-right:.4rem">Es punto de entrada (cobra entradas)</label></div>
     <div class="field"><label><input type="checkbox" id="b-activa" ${b.activa?'checked':''} style="width:auto;margin-right:.4rem">Activa esta noche</label></div>
     <button class="btn btn-primary btn-block" onclick="saveBarra(${b.id||'null'})">Guardar</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
