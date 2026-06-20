@@ -372,7 +372,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "1.9";  // ← subir este número con cada cambio
+const VERSION = "2.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -518,12 +518,20 @@ async function enterPOS(){
 }
 async function loadProductos(){
   $('prod-grid').innerHTML='<div class="spin"></div>';
-  const {data,error}=await sb.from('productos').select('*').eq('activo',true).order('categoria').order('nombre');
+  const [{data,error},la]=await Promise.all([
+    sb.from('productos').select('*').eq('activo',true).order('categoria').order('nombre'),
+    getListaActiva()
+  ]);
   if(error){ $('prod-grid').innerHTML='<div class="empty">No pudimos cargar los productos.</div>'; return; }
-  ST.productos=data;
-  ST.cats=[...new Set(data.map(p=>p.categoria))];
+  const col = la==='2'?'precio2':(la==='3'?'precio3':'precio');
+  ST.productos=(data||[]).map(p=>({...p, precio: Number(p[col]!=null&&p[col]!==0?p[col]:p.precio)||0}));
+  ST.cats=[...new Set(ST.productos.map(p=>p.categoria))];
   ST.catActiva=ST.cats[0]||null;
   renderCats();
+}
+async function getListaActiva(){
+  try{ const {data}=await sb.from('config').select('valor').eq('clave','lista_activa').maybeSingle(); return (data&&data.valor)||'1'; }
+  catch(e){ return '1'; }
 }
 function renderCats(){
   $('cats').innerHTML='';
@@ -710,13 +718,23 @@ async function saveMov(tipo){
   await sb.from('caja_movimientos').insert({caja_id:ST.caja.id,tipo,monto,concepto:$('mov-concepto').value.trim(),usuario_id:ST.cajero.id});
   closeModal(); toast('Movimiento guardado','ok'); loadCaja();
 }
+async function setListaNoche(v){
+  const {error}=await sb.from('config').upsert({clave:'lista_activa',valor:v},{onConflict:'clave'});
+  if(error){ toast('No se pudo cambiar la lista','err'); return; }
+  toast('Lista de la noche: '+(ST.listaNombres?ST.listaNombres[v]:v),'ok');
+}
 /* ---------- ADMIN · CAJAS (el admin abre y cierra todas) ---------- */
 async function admCajas(){
   const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
-  const [{data:cajas},{data:barras}]=await Promise.all([
+  const [{data:cajas},{data:barras},{data:cfg}]=await Promise.all([
     sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
-    sb.from('barras').select('*').order('orden')
+    sb.from('barras').select('*').order('orden'),
+    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre'])
   ]);
+  const cmap={}; (cfg||[]).forEach(r=>cmap[r.clave]=r.valor);
+  const la=cmap.lista_activa||'1';
+  ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
+  const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
   let agg={};
   if(cajas&&cajas.length){
@@ -733,6 +751,15 @@ async function admCajas(){
         <button class="btn btn-danger" style="min-height:38px" onclick="admCerrarModal(${c.id})">Cerrar</button></div>`;}).join('');
   };
   body.innerHTML=`
+    <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
+      <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem">Lista de precios de la noche</div>
+      <select id="lista-noche" onchange="setListaNoche(this.value)">
+        <option value="1"${la==='1'?' selected':''}>${ln[1]}</option>
+        <option value="2"${la==='2'?' selected':''}>${ln[2]}</option>
+        <option value="3"${la==='3'?' selected':''}>${ln[3]}</option>
+      </select>
+      <p class="muted" style="font-size:.72rem;margin-top:.4rem">Todas las barras cobran con esta lista. Cambiala antes de abrir las cajas.</p>
+    </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
     ${grupo(false)}
@@ -940,22 +967,25 @@ async function admProductos(){
       <button class="btn btn-ghost" style="min-height:38px" onclick='prodModal(${JSON.stringify(p)})'>Editar</button></div>`).join('')}`;
 }
 function prodModal(p){
-  p=p||{categoria:'',nombre:'',precio:0,activo:true};
+  p=p||{categoria:'',nombre:'',precio:0,precio2:0,precio3:0,activo:true};
   let cats=ST.categorias.map(c=>c.nombre);
   if(p.categoria && !cats.includes(p.categoria)) cats.unshift(p.categoria);
   const opts=cats.map(n=>`<option value="${n}"${n===p.categoria?' selected':''}>${n}</option>`).join('');
+  const ln=ST.listaNombres||{1:'Lista 1',2:'Lista 2',3:'Lista 3'};
   modal(`<h3>${p.id?'Editar':'Nuevo'} producto</h3>
     <div class="field"><label>Nombre</label><input id="p-nombre" value="${p.nombre}"></div>
     <div class="field"><label>Categoría</label>
       ${cats.length?`<select id="p-cat">${opts}</select>`:`<input id="p-cat" placeholder="(creá una categoría primero)"><p class="muted" style="font-size:.75rem;margin-top:.35rem">Tip: cargá categorías desde 🗂️ Categorías.</p>`}
     </div>
-    <div class="field"><label>Precio</label><input id="p-precio" type="number" inputmode="decimal" value="${p.precio}"></div>
+    <div class="field"><label>Precio · ${ln[1]}</label><input id="p-precio" type="number" inputmode="decimal" value="${p.precio||0}"></div>
+    <div class="field"><label>Precio · ${ln[2]}</label><input id="p-precio2" type="number" inputmode="decimal" value="${p.precio2||0}"></div>
+    <div class="field"><label>Precio · ${ln[3]}</label><input id="p-precio3" type="number" inputmode="decimal" value="${p.precio3||0}"></div>
     <div class="field"><label><input type="checkbox" id="p-activo" ${p.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
     <button class="btn btn-primary btn-block" onclick="saveProd(${p.id||'null'})">Guardar</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
 async function saveProd(id){
-  const rec={nombre:$('p-nombre').value.trim(),categoria:($('p-cat').value||'').trim()||'General',precio:parseFloat($('p-precio').value)||0,activo:$('p-activo').checked};
+  const rec={nombre:$('p-nombre').value.trim(),categoria:($('p-cat').value||'').trim()||'General',precio:parseFloat($('p-precio').value)||0,precio2:parseFloat($('p-precio2').value)||0,precio3:parseFloat($('p-precio3').value)||0,activo:$('p-activo').checked};
   if(!rec.nombre){ toast('Poné un nombre','err'); return; }
   const q=id? sb.from('productos').update(rec).eq('id',id) : sb.from('productos').insert(rec);
   const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
