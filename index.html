@@ -218,16 +218,17 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 
 /* ticket impresión */
 #ticket{display:none}
+@page{size:72mm auto;margin:0}
 @media print{
   body *{visibility:hidden}
   #ticket,#ticket *{visibility:visible}
-  #ticket{display:block;position:absolute;left:0;top:0;width:72mm;color:#000;font-family:'Courier New',monospace;font-size:12px}
+  #ticket{display:block;position:absolute;left:0;top:0;width:72mm;color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px}
   #ticket .tk{padding:6px 4px 10px;page-break-after:always}
   #ticket .tk:last-child{page-break-after:auto}
   #ticket .tc{text-align:center}
   #ticket .tr{display:flex;justify-content:space-between}
   #ticket hr{border:none;border-top:1px dashed #000;margin:4px 0}
-  #ticket .big{font-size:15px;font-weight:bold}
+  #ticket .big{font-size:18px;font-weight:900}
 }
 </style>
 </head>
@@ -374,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "2.7";  // ← subir este número con cada cambio
+const VERSION = "3.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -432,6 +433,7 @@ function buildDrawer(){
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('noche')">🌙 Noche</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajas')">🧾 Cajas</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('tickets')">🎟️ Anular ticket</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('eventos')">🎫 Eventos</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras y entradas</button>`;
@@ -699,26 +701,27 @@ async function confirmarVenta(forma){
   const items=ST.cart.map(i=>({venta_id:venta.id,producto_id:(typeof i.producto_id==='number'?i.producto_id:null),nombre:i.nombre,
     cantidad:i.cantidad,precio_unitario:i.precio,subtotal:i.precio*i.cantidad}));
   await sb.from('ventas_items').insert(items);
+  // un ticket numerado por cada unidad
+  const ticketsRows=[];
+  ST.cart.forEach(i=>{ const n=Math.max(1,Math.round(i.cantidad)); for(let u=0;u<n;u++) ticketsRows.push({venta_id:venta.id,caja_id:ST.caja.id,nombre:i.nombre,precio:Number(i.precio),forma_pago:forma}); });
+  const {data:tks}=await sb.from('tickets').insert(ticketsRows).select('numero,nombre,precio').order('numero');
   closeModal();
-  imprimirTicket(venta,items,forma);
+  imprimirTicket(tks&&tks.length?tks:ticketsRows.map((r,i)=>({numero:'—',nombre:r.nombre,precio:r.precio})),forma);
   toast('Venta registrada · '+money(tot),'ok');
   ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
 }
-function imprimirTicket(venta,items,forma){
+function imprimirTicket(tks,forma){
   const hora=new Date().toLocaleString('es-AR');
-  // un vale por cada unidad, con acumulado corriente
-  const vales=[];
-  items.forEach(i=>{ const pu=Number(i.precio_unitario)||0; for(let u=0;u<(i.cantidad||0);u++) vales.push({nombre:i.nombre,precio:pu}); });
-  const totalUn=vales.length;
+  const totalUn=tks.length;
   let acum=0, html='';
-  vales.forEach((v,idx)=>{
-    acum+=v.precio;
+  tks.forEach((v,idx)=>{
+    acum+=Number(v.precio)||0;
     html+=`<div class="tk">
       <div class="tc big">${ST.boliche||'WIKEND'}</div>
       ${ST.evento?`<div class="tc">${ST.evento}</div>`:''}
       <div class="tc">${ST.barra.nombre}</div>
       <hr>
-      <div class="tc">TICKET ${idx+1} / ${totalUn}</div>
+      <div class="tc">N° ${v.numero} · ${idx+1}/${totalUn}</div>
       <div class="tc big">${v.nombre}</div>
       <div class="tc big">${money(v.precio)}</div>
       <hr>
@@ -877,14 +880,16 @@ async function admCerrarModal(cajaId){
   const {data:caja}=await sb.from('caja').select('*').eq('id',cajaId).maybeSingle();
   if(!caja){ toast('No se encontró la caja','err'); return; }
   const {data:barra}=await sb.from('barras').select('nombre').eq('id',caja.barra_id).maybeSingle();
-  const [{data:ventas},{data:movs}]=await Promise.all([
+  const [{data:ventas},{data:movs},{data:anulados}]=await Promise.all([
     sb.from('ventas').select('total,forma_pago').eq('caja_id',cajaId).eq('estado','cerrada'),
-    sb.from('caja_movimientos').select('tipo,monto').eq('caja_id',cajaId)
+    sb.from('caja_movimientos').select('tipo,monto').eq('caja_id',cajaId),
+    sb.from('tickets').select('precio,forma_pago').eq('caja_id',cajaId).eq('estado','anulado')
   ]);
   let efectivo=0; (ventas||[]).forEach(v=>{ if(v.forma_pago==='efectivo') efectivo+=Number(v.total); });
+  let anuladoEf=0; (anulados||[]).forEach(t=>{ if(t.forma_pago==='efectivo') anuladoEf+=Number(t.precio); });
   const ingresos=(movs||[]).filter(m=>m.tipo==='ingreso').reduce((s,m)=>s+Number(m.monto),0);
   const egresos=(movs||[]).filter(m=>m.tipo==='egreso').reduce((s,m)=>s+Number(m.monto),0);
-  const esp=Number(caja.monto_inicial)+efectivo+ingresos-egresos;
+  const esp=Number(caja.monto_inicial)+efectivo+ingresos-egresos-anuladoEf;
   ST._cierreAdmin={cajaId,esp};
   modal(`<h3>Cerrar caja · ${barra?barra.nombre:''}</h3>
     <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Contá el efectivo de la caja y cargá el total.</p>
@@ -910,6 +915,7 @@ function adminTab(t,btn){
   if(t==='noche') admNoche();
   if(t==='monitoreo') admMonitoreo();
   if(t==='cajas') admCajas();
+  if(t==='tickets') admTickets();
   if(t==='eventos') admEventos();
   if(t==='central') admCentral();
   if(t==='barras') admBarras();
@@ -926,15 +932,17 @@ async function admMonitoreo(){
   const {data:cajas}=await sb.from('caja').select('*').eq('estado','abierta').order('barra_id');
   if(!cajas||!cajas.length){ body.innerHTML='<div class="empty">No hay cajas abiertas en este momento.</div><button class="btn btn-block" style="margin-top:1rem" onclick="admMonitoreo()">↻ Actualizar</button>'; return; }
   const ids=cajas.map(c=>c.id);
-  const [{data:barras},{data:usuarios},{data:ventas}]=await Promise.all([
+  const [{data:barras},{data:usuarios},{data:ventas},{data:anul}]=await Promise.all([
     sb.from('barras').select('id,nombre'),
     sb.from('usuarios').select('id,nombre'),
-    sb.from('ventas').select('caja_id,total,forma_pago').eq('estado','cerrada').in('caja_id',ids)
+    sb.from('ventas').select('caja_id,total,forma_pago').eq('estado','cerrada').in('caja_id',ids),
+    sb.from('tickets').select('caja_id,precio,forma_pago').eq('estado','anulado').in('caja_id',ids)
   ]);
   const bn={}; (barras||[]).forEach(b=>bn[b.id]=b.nombre);
   const un={}; (usuarios||[]).forEach(u=>un[u.id]=u.nombre);
   const agg={}; ids.forEach(id=>agg[id]={total:0,efectivo:0,transferencia:0,mercadopago:0,tarjeta:0,cortesia:0});
   (ventas||[]).forEach(v=>{ const a=agg[v.caja_id]; if(!a)return; a[v.forma_pago]+=Number(v.total); if(v.forma_pago!=='cortesia') a.total+=Number(v.total); });
+  (anul||[]).forEach(t=>{ const a=agg[t.caja_id]; if(!a)return; if(a[t.forma_pago]!=null) a[t.forma_pago]-=Number(t.precio); if(t.forma_pago!=='cortesia') a.total-=Number(t.precio); });
   let totalGral=0; cajas.forEach(c=>totalGral+=agg[c.id].total);
   body.innerHTML=`
     <div class="kpi-row">
@@ -964,8 +972,16 @@ async function renderCentral(){
   const {data:ventas}=await sb.from('ventas').select('total,forma_pago,barra_id,estado').eq('estado','cerrada').gte('created_at',ini).lt('created_at',fin);
   const {data:barras}=await sb.from('barras').select('*').order('orden');
   const {data:cierre}=await sb.from('cierres_noche').select('*').eq('fecha',fecha).maybeSingle();
+  const {data:anul}=await sb.from('tickets').select('precio,forma_pago,caja_id').eq('estado','anulado').gte('created_at',ini).lt('created_at',fin);
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]={nombre:b.nombre,efectivo:0,transferencia:0,mercadopago:0,tarjeta:0,cortesia:0,total:0});
   (ventas||[]).forEach(v=>{ const r=bmap[v.barra_id]; if(!r)return; r[v.forma_pago]+=Number(v.total); if(v.forma_pago!=='cortesia') r.total+=Number(v.total); });
+  // descontar vales anulados (mapear caja → barra)
+  const cajaIds=[...new Set((anul||[]).map(t=>t.caja_id).filter(Boolean))];
+  if(cajaIds.length){
+    const {data:cs}=await sb.from('caja').select('id,barra_id').in('id',cajaIds);
+    const cb={}; (cs||[]).forEach(c=>cb[c.id]=c.barra_id);
+    (anul||[]).forEach(t=>{ const r=bmap[cb[t.caja_id]]; if(!r)return; if(r[t.forma_pago]!=null) r[t.forma_pago]-=Number(t.precio); if(t.forma_pago!=='cortesia') r.total-=Number(t.precio); });
+  }
   const rows=Object.values(bmap).filter(r=>r.total||r.cortesia);
   const sum=k=>rows.reduce((s,r)=>s+r[k],0);
   const totalBarras=sum('total');
@@ -995,6 +1011,40 @@ async function saveCierre(fecha){
   const {error}=await sb.from('cierres_noche').upsert({fecha,entradas_manual:entradas,guardarropa_manual:guarda,usuario_id:ST.admin?.id||null},{onConflict:'fecha'});
   if(error){ toast('No se pudo guardar','err'); return; }
   toast('Cierre de noche guardado','ok'); renderCentral();
+}
+
+/* ---------- ADMIN · ANULAR TICKET ---------- */
+async function admTickets(){
+  const body=$('admin-body');
+  body.innerHTML=`
+    <div class="card" style="padding:1rem;margin-bottom:1rem">
+      <div class="field" style="margin:0"><label>Número de ticket a dar de baja</label><input id="tk-num" type="number" inputmode="numeric" placeholder="ej: 1043"></div>
+      <button class="btn btn-primary btn-block" style="margin-top:.6rem" onclick="buscarTicket()">Buscar</button>
+    </div>
+    <div id="tk-result"></div>`;
+}
+async function buscarTicket(){
+  const num=parseInt($('tk-num').value); if(!num){ toast('Poné un número','err'); return; }
+  const res=$('tk-result'); res.innerHTML='<div class="spin"></div>';
+  const {data:t}=await sb.from('tickets').select('*').eq('numero',num).maybeSingle();
+  if(!t){ res.innerHTML='<div class="empty">No existe un ticket con ese número.</div>'; return; }
+  let barraNom='';
+  if(t.caja_id){ const {data:c}=await sb.from('caja').select('barra_id').eq('id',t.caja_id).maybeSingle(); if(c){ const {data:b}=await sb.from('barras').select('nombre').eq('id',c.barra_id).maybeSingle(); barraNom=b?b.nombre:''; } }
+  const anulado=t.estado==='anulado';
+  res.innerHTML=`<div class="card" style="padding:1rem">
+    <div style="font-weight:700;font-family:'Space Grotesk';font-size:1.15rem">N° ${t.numero} · ${t.nombre}</div>
+    <div class="muted" style="font-size:.88rem;margin:.35rem 0">${money(t.precio)} · ${t.forma_pago||''}${barraNom?' · '+barraNom:''}</div>
+    <div class="muted" style="font-size:.82rem">${new Date(t.created_at).toLocaleString('es-AR')}</div>
+    ${anulado? `<div style="color:#ff5a6e;font-weight:600;margin-top:.7rem">⛔ Ya está anulado${t.anulado_at?' · '+new Date(t.anulado_at).toLocaleString('es-AR'):''}</div>`
+      : `<button class="btn btn-danger btn-block btn-lg" style="margin-top:.8rem" onclick="anularTicket(${t.id},${t.numero})">Dar de baja este ticket</button>
+         <p class="muted" style="font-size:.78rem;text-align:center;margin-top:.5rem">Se descuenta del efectivo esperado de su caja.</p>`}
+  </div>`;
+}
+async function anularTicket(id,numero){
+  if(!confirm('¿Dar de baja el ticket N° '+numero+'? Se va a descontar del efectivo esperado de su caja.')) return;
+  const {error}=await sb.from('tickets').update({estado:'anulado',anulado_at:new Date().toISOString(),anulado_por:(ST.admin&&ST.admin.email)||'admin'}).eq('id',id);
+  if(error){ toast('No se pudo anular','err'); return; }
+  toast('Ticket N° '+numero+' anulado','ok'); buscarTicket();
 }
 
 /* ---------- ADMIN · NOCHE (paraguas de la operación) ---------- */
