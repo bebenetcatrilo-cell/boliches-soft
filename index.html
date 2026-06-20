@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.7";  // ← subir este número con cada cambio
+const VERSION = "3.8";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -436,6 +436,7 @@ function buildDrawer(){
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('tickets')">🎟️ Anular ticket</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('eventos')">🎫 Eventos</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('reportes')">📈 Reportes</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras y entradas</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('categorias')">🗂️ Categorías</button>`;
@@ -984,6 +985,7 @@ function adminTab(t,btn){
   if(t==='tickets') admTickets();
   if(t==='eventos') admEventos();
   if(t==='central') admCentral();
+  if(t==='reportes') admReportes();
   if(t==='barras') admBarras();
   if(t==='productos') admProductos();
   if(t==='categorias') admCategorias();
@@ -1077,6 +1079,112 @@ async function saveCierre(fecha){
   const {error}=await sb.from('cierres_noche').upsert({fecha,entradas_manual:entradas,guardarropa_manual:guarda,usuario_id:ST.admin?.id||null},{onConflict:'fecha'});
   if(error){ toast('No se pudo guardar','err'); return; }
   toast('Cierre de noche guardado','ok'); renderCentral();
+}
+
+/* ---------- ADMIN · REPORTES ---------- */
+async function admReportes(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data:eventos}=await sb.from('eventos').select('id,nombre').order('nombre');
+  ST._eventos=eventos||[];
+  body.innerHTML=`
+    <div style="display:flex;gap:.4rem;margin-bottom:1rem">
+      <button class="btn btn-block" id="rep-tab-noche" onclick="repTab('noche')">📅 Por noche</button>
+      <button class="btn btn-ghost btn-block" id="rep-tab-evento" onclick="repTab('evento')">🎫 Por evento</button>
+    </div>
+    <div id="rep-filtros"></div>
+    <div id="rep-data"><div class="spin"></div></div>`;
+  repTab('noche');
+}
+function repTab(modo){
+  ST._repModo=modo;
+  $('rep-tab-noche').className = modo==='noche'?'btn btn-block':'btn btn-ghost btn-block';
+  $('rep-tab-evento').className = modo==='evento'?'btn btn-block':'btn btn-ghost btn-block';
+  const f=$('rep-filtros');
+  if(modo==='noche'){
+    const today=new Date().toISOString().slice(0,10);
+    f.innerHTML=`<div class="field"><label>Noche del</label><input type="date" id="rep-fecha" value="${today}" onchange="repNoche()"></div>`;
+    repNoche();
+  } else {
+    const opts=(ST._eventos||[]).map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
+    f.innerHTML=`<div class="field"><label>Evento</label><select id="rep-evento" onchange="repEvento()">${opts||'<option value="">Sin eventos</option>'}</select></div>`;
+    repEvento();
+  }
+}
+async function ticketsDeNoches(nocheIds){
+  if(!nocheIds.length) return [];
+  const {data:cajas}=await sb.from('caja').select('id').in('noche_id',nocheIds);
+  const cajaIds=(cajas||[]).map(c=>c.id);
+  if(!cajaIds.length) return [];
+  const {data:t}=await sb.from('tickets').select('nombre,precio,forma_pago,estado,numero').in('caja_id',cajaIds);
+  return t||[];
+}
+function procesarTickets(tks){
+  const validos=(tks||[]).filter(t=>t.estado!=='anulado');
+  const anulados=(tks||[]).filter(t=>t.estado==='anulado');
+  let total=0; const porPago={efectivo:0,transferencia:0,mercadopago:0,tarjeta:0}; const rank={};
+  validos.forEach(t=>{
+    const p=Number(t.precio)||0;
+    if(t.forma_pago!=='cortesia') total+=p;
+    if(porPago[t.forma_pago]!=null) porPago[t.forma_pago]+=p;
+    if(!rank[t.nombre]) rank[t.nombre]={cant:0,monto:0};
+    rank[t.nombre].cant++; rank[t.nombre].monto+=p;
+  });
+  const ranking=Object.entries(rank).map(([nombre,v])=>({nombre,cant:v.cant,monto:v.monto})).sort((a,b)=>b.cant-a.cant);
+  return {validos,anulados,total,porPago,ranking};
+}
+function renderReporte(info,cab){
+  const {total,porPago,ranking,validos,anulados}=info;
+  $('rep-data').innerHTML=`
+    ${cab||''}
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">Total ventas</div><div class="v num" style="color:var(--cash)">${money(total)}</div></div>
+      <div class="kpi"><div class="k">Tickets vendidos</div><div class="v num">${validos.length}</div></div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">Tickets anulados</div><div class="v num" style="color:var(--danger)">${anulados.length}</div></div>
+      <div class="kpi"><div class="k">Productos distintos</div><div class="v num">${ranking.length}</div></div>
+    </div>
+    <div class="sec-title">Por medio de pago</div>
+    <div style="display:flex;gap:.9rem;flex-wrap:wrap;font-size:.85rem;margin-bottom:.3rem">
+      <span class="muted">Efvo <b style="color:var(--text)">${money(porPago.efectivo)}</b></span>
+      <span class="muted">Transf <b style="color:var(--text)">${money(porPago.transferencia)}</b></span>
+      <span class="muted">MP <b style="color:var(--text)">${money(porPago.mercadopago)}</b></span>
+      <span class="muted">Tarj <b style="color:var(--text)">${money(porPago.tarjeta)}</b></span>
+    </div>
+    <div class="sec-title">🏆 Ranking de productos</div>
+    ${ranking.length?`<div style="overflow-x:auto"><table class="tbl">
+      <thead><tr><th>#</th><th>Producto</th><th>Cant.</th><th>Monto</th></tr></thead>
+      <tbody>${ranking.map((r,i)=>`<tr><td>${i+1}</td><td>${r.nombre}</td><td class="num">${r.cant}</td><td class="num">${money(r.monto)}</td></tr>`).join('')}</tbody>
+    </table></div>`:'<div class="empty">Sin ventas en este período.</div>'}
+    <div class="sec-title">🎟️ Tickets anulados</div>
+    ${anulados.length?`<div style="overflow-x:auto"><table class="tbl">
+      <thead><tr><th>N°</th><th>Producto</th><th>Monto</th></tr></thead>
+      <tbody>${anulados.map(t=>`<tr><td>${t.numero}</td><td>${t.nombre}</td><td class="num">${money(t.precio)}</td></tr>`).join('')}</tbody>
+    </table></div>`:'<p class="muted" style="font-size:.85rem">No hubo tickets anulados.</p>'}
+    <div style="height:1rem"></div>`;
+}
+async function repNoche(){
+  const fecha=$('rep-fecha').value; if(!fecha) return;
+  $('rep-data').innerHTML='<div class="spin"></div>';
+  const {data:noche}=await sb.from('noches').select('id,evento_id,eventos(nombre)').eq('fecha',fecha).maybeSingle();
+  let tks=[], cab='';
+  if(noche){
+    tks=await ticketsDeNoches([noche.id]);
+    cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div style="font-size:.8rem;color:var(--muted)">Noche del ${fecha}</div><div style="font-weight:600;margin-top:.2rem">🎫 ${noche.eventos?noche.eventos.nombre:'Sin evento'}</div></div>`;
+  } else {
+    cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div class="muted" style="font-size:.85rem">No hay una noche registrada en esa fecha.</div></div>`;
+  }
+  renderReporte(procesarTickets(tks),cab);
+}
+async function repEvento(){
+  const ev=$('rep-evento').value; if(!ev){ renderReporte(procesarTickets([]),''); return; }
+  $('rep-data').innerHTML='<div class="spin"></div>';
+  const {data:noches}=await sb.from('noches').select('id').eq('evento_id',ev);
+  const nocheIds=(noches||[]).map(n=>n.id);
+  const tks=await ticketsDeNoches(nocheIds);
+  const evName=((ST._eventos||[]).find(e=>String(e.id)===String(ev))||{}).nombre||'';
+  const cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div style="font-size:.8rem;color:var(--muted)">Evento</div><div style="font-weight:600;margin-top:.2rem">🎫 ${evName}</div><div class="muted" style="font-size:.8rem;margin-top:.2rem">${nocheIds.length} noche(s) registrada(s)</div></div>`;
+  renderReporte(procesarTickets(tks),cab);
 }
 
 /* ---------- ADMIN · ANULAR TICKET ---------- */
