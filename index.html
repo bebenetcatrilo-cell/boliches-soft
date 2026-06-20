@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.4";  // ← subir este número con cada cambio
+const VERSION = "4.5";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -788,11 +788,21 @@ function printArea(){
   const go2=()=>{ if(--pend<=0) setTimeout(()=>window.print(),60); };
   imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
 }
-async function imprimirReporte(info,titulo,sub){
+async function imprimirReporte(info,titulo,sub,sel){
+  sel=sel||{total:1,entrabar:1,barras:1,vendedor:1,pago:1,ranking:1,anulados:1};
   await cargarMarcaTicket();
-  const {total,porPago,ranking,anulados,gente,cortesias}=info;
+  const {total,porPago,ranking,anulados,gente,cortesias,totalEntradas,totalBarras,barras,vendedores}=info;
   const hr='<hr>';
   const fila=(a,b)=>`<div class="tr" style="font-size:13px"><span>${a}</span><span>${b}</span></div>`;
+  const titBlk=(t)=>`<div class="tc" style="font-weight:900">${t}</div>`;
+  let body='';
+  if(sel.total){ body+=hr+fila('Total ventas',money(total))+fila('Personas (entr.)',gente)+fila('Cortesías',cortesias)+fila('Anulados',anulados.length); }
+  if(sel.entrabar){ body+=hr+titBlk('ENTRADAS vs BARRAS')+fila('Entradas',money(totalEntradas))+fila('Barras',money(totalBarras)); }
+  if(sel.barras && barras.length){ body+=hr+titBlk('POR CAJA / BARRA')+barras.map(b=>fila(b.nombre,money(b.monto))).join(''); }
+  if(sel.vendedor && vendedores.length){ body+=hr+titBlk('POR VENDEDOR')+vendedores.map(v=>fila(v.nombre,money(v.monto))).join(''); }
+  if(sel.pago){ body+=hr+titBlk('MEDIOS DE PAGO')+fila('Efectivo',money(porPago.efectivo))+fila('Transfer.',money(porPago.transferencia))+fila('Mercado Pago',money(porPago.mercadopago))+fila('Tarjeta',money(porPago.tarjeta)); }
+  if(sel.ranking){ body+=hr+titBlk('RANKING')+(ranking.length? ranking.map((r,i)=>`<div style="font-size:13px;margin:2px 0"><div class="tr"><span>${i+1}. ${r.nombre} · ${money(r.precio)}</span></div><div class="tr" style="font-size:11px"><span>${r.cant} u.</span><span>${money(r.monto)}</span></div></div>`).join('') : '<div class="tc" style="font-size:12px">Sin ventas</div>'); }
+  if(sel.anulados && anulados.length){ body+=hr+titBlk('ANULADOS')+anulados.map(t=>`<div class="tr" style="font-size:12px"><span>N°${t.numero} ${t.nombre}</span><span>${money(t.precio)}</span></div>`).join(''); }
   const html=`<div class="tk">
     ${ST.logo
       ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
@@ -800,34 +810,32 @@ async function imprimirReporte(info,titulo,sub){
     <div class="tc big">REPORTE</div>
     <div class="tc">${titulo}</div>
     ${sub?`<div class="tc" style="font-size:12px">${sub}</div>`:''}
-    ${hr}
-    ${fila('Total ventas',money(total))}
-    ${fila('Personas (entr.)',gente)}
-    ${fila('Cortesías',cortesias)}
-    ${fila('Anulados',anulados.length)}
-    ${hr}
-    <div class="tc" style="font-weight:900">MEDIOS DE PAGO</div>
-    ${fila('Efectivo',money(porPago.efectivo))}
-    ${fila('Transfer.',money(porPago.transferencia))}
-    ${fila('Mercado Pago',money(porPago.mercadopago))}
-    ${fila('Tarjeta',money(porPago.tarjeta))}
-    ${hr}
-    <div class="tc" style="font-weight:900">RANKING</div>
-    ${ranking.length? ranking.map((r,i)=>`<div style="font-size:13px;margin:2px 0">
-      <div class="tr"><span>${i+1}. ${r.nombre} · ${money(r.precio)}</span></div>
-      <div class="tr" style="font-size:11px"><span>${r.cant} u.</span><span>${money(r.monto)}</span></div>
-    </div>`).join('') : '<div class="tc" style="font-size:12px">Sin ventas</div>'}
-    ${anulados.length? hr+`<div class="tc" style="font-weight:900">ANULADOS</div>`+anulados.map(t=>`<div class="tr" style="font-size:12px"><span>N°${t.numero} ${t.nombre}</span><span>${money(t.precio)}</span></div>`).join('') : ''}
+    ${body}
     ${hr}
     <div class="tc" style="font-size:10px">Impreso ${new Date().toLocaleString('es-AR')}</div>
   </div>`;
   $('ticket').innerHTML=html;
   printArea();
 }
-function imprimirReporteActual(){
+function modalImprimirReporte(){
   if(!ST._repPrint){ toast('Abrí un reporte primero','err'); return; }
-  imprimirReporte(ST._repPrint.info, ST._repPrint.titulo, ST._repPrint.sub);
+  const items=[['total','Total de ventas'],['entrabar','Entradas vs Barras'],['barras','Por caja / barra'],['vendedor','Por vendedor'],['pago','Medios de pago'],['ranking','Ranking de productos'],['anulados','Tickets anulados']];
+  modal(`<h3>🖨️ Imprimir reporte</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:.7rem">Marcá lo que querés incluir:</p>
+    <div style="display:flex;flex-direction:column;gap:.6rem;margin-bottom:1rem">
+      ${items.map(([k,lbl])=>`<label style="display:flex;align-items:center;gap:.5rem;font-size:.95rem"><input type="checkbox" id="rp-${k}" checked style="width:auto;transform:scale(1.2)">${lbl}</label>`).join('')}
+    </div>
+    <button class="btn btn-primary btn-block" onclick="lanzarImpresionReporte()">Imprimir</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
+function lanzarImpresionReporte(){
+  const k=['total','entrabar','barras','vendedor','pago','ranking','anulados'];
+  const sel={}; k.forEach(x=>sel[x]=$('rp-'+x)?.checked);
+  if(!k.some(x=>sel[x])){ toast('Marcá al menos un bloque','err'); return; }
+  closeModal();
+  imprimirReporte(ST._repPrint.info, ST._repPrint.titulo, ST._repPrint.sub, sel);
+}
+function imprimirReporteActual(){ modalImprimirReporte(); }
 
 /* ---------- CAJA (movimientos + cierre) ---------- */
 async function loadCaja(){
@@ -1210,29 +1218,48 @@ async function ticketsDeNoches(nocheIds){
   const cajaIds=(cajas||[]).map(c=>c.id);
   if(!cajaIds.length) return [];
   const barraIds=[...new Set((cajas||[]).map(c=>c.barra_id))];
-  const {data:barras}=await sb.from('barras').select('id,es_puerta').in('id',barraIds);
-  const pu={}; (barras||[]).forEach(b=>pu[b.id]=b.es_puerta);
-  const cajaPuerta={}; (cajas||[]).forEach(c=>cajaPuerta[c.id]=!!pu[c.barra_id]);
-  const {data:t}=await sb.from('tickets').select('nombre,precio,forma_pago,estado,numero,caja_id').in('caja_id',cajaIds);
-  (t||[]).forEach(tk=>tk.esEntrada=!!cajaPuerta[tk.caja_id]);
+  const {data:barras}=await sb.from('barras').select('id,nombre,es_puerta').in('id',barraIds);
+  const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
+  const cajaInfo={}; (cajas||[]).forEach(c=>{const b=bmap[c.barra_id]||{}; cajaInfo[c.id]={barra:b.nombre||'—',esPuerta:!!b.es_puerta};});
+  const {data:t}=await sb.from('tickets').select('nombre,precio,forma_pago,estado,numero,caja_id,venta_id').in('caja_id',cajaIds);
+  // vendedor: ticket -> venta.usuario_id -> usuario.nombre
+  const ventaIds=[...new Set((t||[]).map(x=>x.venta_id).filter(Boolean))];
+  let ventaUser={};
+  if(ventaIds.length){
+    const {data:ventas}=await sb.from('ventas').select('id,usuario_id').in('id',ventaIds);
+    const userIds=[...new Set((ventas||[]).map(v=>v.usuario_id).filter(Boolean))];
+    let umap={};
+    if(userIds.length){ const {data:us}=await sb.from('usuarios').select('id,nombre').in('id',userIds); (us||[]).forEach(u=>umap[u.id]=u.nombre); }
+    (ventas||[]).forEach(v=>ventaUser[v.id]=umap[v.usuario_id]||'—');
+  }
+  (t||[]).forEach(tk=>{ const ci=cajaInfo[tk.caja_id]||{}; tk.esEntrada=!!ci.esPuerta; tk.barra=ci.barra||'—'; tk.vendedor=ventaUser[tk.venta_id]||'—'; });
   return t||[];
 }
 function procesarTickets(tks){
   const validos=(tks||[]).filter(t=>t.estado!=='anulado');
   const anulados=(tks||[]).filter(t=>t.estado==='anulado');
   let total=0; const porPago={efectivo:0,transferencia:0,mercadopago:0,tarjeta:0}; const rank={};
-  let gente=0, cortesias=0;
+  let gente=0, cortesias=0, totalEntradas=0, totalBarras=0;
+  const porBarra={}, porVendedor={};
   validos.forEach(t=>{
     const p=Number(t.precio)||0;
-    if(t.forma_pago!=='cortesia') total+=p;
+    const esCort=t.forma_pago==='cortesia';
+    if(!esCort) total+=p;
     if(porPago[t.forma_pago]!=null) porPago[t.forma_pago]+=p;
-    if(t.esEntrada){ gente++; if(t.forma_pago==='cortesia') cortesias++; }
+    if(t.esEntrada){ gente++; if(esCort) cortesias++; else totalEntradas+=p; }
+    else if(!esCort){ totalBarras+=p; }
+    if(!esCort){
+      porBarra[t.barra]=(porBarra[t.barra]||0)+p;
+      porVendedor[t.vendedor]=(porVendedor[t.vendedor]||0)+p;
+    }
     const key=t.nombre+'||'+p;
     if(!rank[key]) rank[key]={nombre:t.nombre,precio:p,cant:0,monto:0};
     rank[key].cant++; rank[key].monto+=p;
   });
   const ranking=Object.values(rank).sort((a,b)=>b.cant-a.cant);
-  return {validos,anulados,total,porPago,ranking,gente,cortesias};
+  const barras=Object.entries(porBarra).map(([n,m])=>({nombre:n,monto:m})).sort((a,b)=>b.monto-a.monto);
+  const vendedores=Object.entries(porVendedor).map(([n,m])=>({nombre:n,monto:m})).sort((a,b)=>b.monto-a.monto);
+  return {validos,anulados,total,porPago,ranking,gente,cortesias,totalEntradas,totalBarras,barras,vendedores};
 }
 function renderReporte(info,cab,printMeta){
   ST._repPrint={info, titulo:(printMeta&&printMeta.titulo)||'Reporte', sub:(printMeta&&printMeta.sub)||''};
