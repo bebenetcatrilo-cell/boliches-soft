@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.8";  // ← subir este número con cada cambio
+const VERSION = "4.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -525,6 +525,7 @@ async function enterPOS(){
     $('search-results').style.display='none'; $('cats').style.display=''; $('prod-grid').style.display='';
     await cargarEntradasPuerta();
   } else {
+    const ab=$('aforo-banner'); if(ab) ab.style.display='none';
     if(sb_) sb_.style.display='';
     $('prod-search').value=''; onSearch();
     if(!ST.productos.length || ST.productos.some(p=>p.esEntrada)) await loadProductos();
@@ -558,6 +559,15 @@ async function cargarEntradasPuerta(){
   });
   ST.cats=['Entradas']; ST.catActiva='Entradas';
   renderCats(); renderProds();
+  let banner=$('aforo-banner');
+  if(!banner){
+    banner=document.createElement('div'); banner.id='aforo-banner';
+    banner.style.cssText='background:var(--surface-2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;font-size:.92rem';
+    const cont=$('cats').parentElement; cont.insertBefore(banner,$('cats'));
+  }
+  banner.style.display='';
+  banner.innerHTML=`<span>👥 Personas ingresadas: <b id="aforo-num" style="color:var(--cash)">…</b></span><button class="btn btn-ghost" style="min-height:30px;padding:.2rem .7rem" onclick="refrescarAforo()">↻</button>`;
+  refrescarAforo();
 }
 async function cargarMarcaTicket(){
   try{
@@ -687,25 +697,65 @@ function posTab(t,btn){
 /* ---------- COBRAR ---------- */
 $('btn-cobrar').onclick=()=>{
   const tot=cartTotal();
+  const cort = ST.esPuerta ? `<button class="btn btn-ghost btn-block" style="margin-top:.7rem;border:1px dashed var(--border)" onclick="pedirCortesia()">🎟️ Dar cortesía (con PIN)</button>` : '';
   modal(`<h3>Cobrar ${money(tot)}</h3>
     <p class="muted" style="margin-bottom:1rem;font-size:.85rem">Elegí el medio de pago</p>
     <div class="pay-grid">${PAGOS.map(p=>`<button class="pay-opt" onclick="confirmarVenta('${p.k}')">${p.n}</button>`).join('')}</div>
-    <button class="btn btn-ghost btn-block" onclick="closeModal()">Cancelar</button>`);
+    ${cort}
+    <button class="btn btn-ghost btn-block" style="margin-top:.6rem" onclick="closeModal()">Cancelar</button>`);
 };
+function pedirCortesia(){
+  modal(`<h3>🎟️ Cortesía</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:.8rem">Ingresá el PIN especial para autorizarla. La cortesía es gratis: suma a la gente pero no al dinero.</p>
+    <input id="cort-pin" type="password" inputmode="numeric" placeholder="PIN" style="text-align:center;font-size:1.3rem;letter-spacing:.3em">
+    <button class="btn btn-primary btn-block btn-lg" style="margin-top:1rem" onclick="validarCortesia()">Autorizar cortesía</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+  setTimeout(()=>{const e=$('cort-pin'); if(e) e.focus();},100);
+}
+async function validarCortesia(){
+  const pin=($('cort-pin').value||'').trim();
+  if(!pin){ toast('Ingresá el PIN','err'); return; }
+  const {data}=await sb.from('config').select('valor').eq('clave','pin_cortesia').maybeSingle();
+  const pinOk=(data&&data.valor)?String(data.valor).trim():'';
+  if(!pinOk){ toast('No hay PIN de cortesía configurado. Avisale al admin.','err'); return; }
+  if(pin!==pinOk){ toast('PIN incorrecto','err'); return; }
+  confirmarVenta('cortesia');
+}
+async function contarGenteNoche(){
+  try{
+    const noche=await getNocheAbierta();
+    if(!noche) return 0;
+    const {data:cajas}=await sb.from('caja').select('id,barra_id').eq('noche_id',noche.id);
+    const barraIds=[...new Set((cajas||[]).map(c=>c.barra_id))];
+    if(!barraIds.length) return 0;
+    const {data:barras}=await sb.from('barras').select('id,es_puerta').in('id',barraIds);
+    const pu={}; (barras||[]).forEach(b=>pu[b.id]=b.es_puerta);
+    const cajaEnt=(cajas||[]).filter(c=>pu[c.barra_id]).map(c=>c.id);
+    if(!cajaEnt.length) return 0;
+    const {data:tks}=await sb.from('tickets').select('id').neq('estado','anulado').in('caja_id',cajaEnt);
+    return (tks||[]).length;
+  }catch(e){ return 0; }
+}
+async function refrescarAforo(){
+  const g=await contarGenteNoche();
+  const el=$('aforo-num'); if(el) el.textContent=g;
+}
 async function confirmarVenta(forma){
-  const tot=cartTotal();
+  const esCortesia = forma==='cortesia';
+  const tot = esCortesia ? 0 : cartTotal();
   modal('<div class="spin"></div>');
   const {data:venta,error}=await sb.from('ventas').insert({
     caja_id:ST.caja.id, barra_id:ST.barra.id, usuario_id:ST.cajero.id,
     total:tot, forma_pago:forma, estado:'cerrada'
   }).select().single();
   if(error){ closeModal(); toast('No se pudo registrar la venta','err'); return; }
+  const pu = i => esCortesia ? 0 : i.precio;
   const items=ST.cart.map(i=>({venta_id:venta.id,producto_id:(typeof i.producto_id==='number'?i.producto_id:null),nombre:i.nombre,
-    cantidad:i.cantidad,precio_unitario:i.precio,subtotal:i.precio*i.cantidad}));
+    cantidad:i.cantidad,precio_unitario:pu(i),subtotal:pu(i)*i.cantidad}));
   await sb.from('ventas_items').insert(items);
   // un ticket numerado por cada unidad
   const ticketsRows=[];
-  ST.cart.forEach(i=>{ const n=Math.max(1,Math.round(i.cantidad)); for(let u=0;u<n;u++) ticketsRows.push({venta_id:venta.id,caja_id:ST.caja.id,nombre:i.nombre,precio:Number(i.precio),forma_pago:forma}); });
+  ST.cart.forEach(i=>{ const n=Math.max(1,Math.round(i.cantidad)); for(let u=0;u<n;u++) ticketsRows.push({venta_id:venta.id,caja_id:ST.caja.id,nombre:i.nombre,precio:esCortesia?0:Number(i.precio),forma_pago:forma}); });
   let tks=[];
   const insRes=await sb.from('tickets').insert(ticketsRows).select('numero,nombre,precio');
   if(insRes.data&&insRes.data.length) tks=insRes.data;
@@ -713,8 +763,9 @@ async function confirmarVenta(forma){
   await cargarMarcaTicket();
   closeModal();
   imprimirTicket(tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio})),forma);
-  toast('Venta registrada · '+money(tot),'ok');
+  toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
   ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
+  if(ST.esPuerta) refrescarAforo();
 }
 function imprimirTicket(tks,forma){
   const hora=new Date().toLocaleString('es-AR');
@@ -815,13 +866,14 @@ async function admCajas(){
   const [{data:cajas},{data:barras},{data:cfg}]=await Promise.all([
     sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
     sb.from('barras').select('*').order('orden'),
-    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual','logo'])
+    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual','logo','pin_cortesia'])
   ]);
   const cmap={}; (cfg||[]).forEach(r=>cmap[r.clave]=r.valor);
   const la=cmap.lista_activa||'1';
   const boliche=cmap.nombre_boliche||'Wikend';
   const evento=cmap.evento_actual||'';
   const logo=cmap.logo||'';
+  const pincort=cmap.pin_cortesia||'';
   ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
   const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
@@ -857,6 +909,8 @@ async function admCajas(){
         <input type="file" accept="image/*" id="logo-file" onchange="subirLogo(this)" style="font-size:.8rem;width:100%">
         ${logo?'<button class="btn btn-ghost btn-block" style="margin-top:.5rem;color:#ff5a6e" onclick="quitarLogo()">Quitar logo</button>':''}
       </div>
+      <div class="field" style="margin-top:1rem"><label>PIN de cortesías (puerta)</label><input id="cfg-pincort" value="${pincort}" placeholder="ej. 9999" inputmode="numeric"></div>
+      <button class="btn btn-accent btn-block" onclick="guardarPinCort()">Guardar PIN cortesías</button>
     </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
@@ -915,6 +969,12 @@ async function quitarLogo(){
   if(!confirm('¿Quitar el logo del ticket?')) return;
   await sb.from('config').upsert({clave:'logo',valor:''},{onConflict:'clave'});
   ST.logo=''; toast('Logo quitado','ok'); admCajas();
+}
+async function guardarPinCort(){
+  const v=($('cfg-pincort').value||'').trim();
+  const {error}=await sb.from('config').upsert({clave:'pin_cortesia',valor:v},{onConflict:'clave'});
+  if(error){ toast('No se pudo guardar','err'); return; }
+  toast(v?'PIN de cortesías guardado':'PIN de cortesías borrado','ok');
 }
 async function admAbrirModal(){
   const noche=await getNocheAbierta();
@@ -1012,10 +1072,11 @@ async function admMonitoreo(){
   (ventas||[]).forEach(v=>{ const a=agg[v.caja_id]; if(!a)return; a[v.forma_pago]+=Number(v.total); if(v.forma_pago!=='cortesia') a.total+=Number(v.total); });
   (anul||[]).forEach(t=>{ const a=agg[t.caja_id]; if(!a)return; if(a[t.forma_pago]!=null) a[t.forma_pago]-=Number(t.precio); if(t.forma_pago!=='cortesia') a.total-=Number(t.precio); });
   let totalGral=0; cajas.forEach(c=>totalGral+=agg[c.id].total);
+  const gente=await contarGenteNoche();
   body.innerHTML=`
     <div class="kpi-row">
-      <div class="kpi"><div class="k">Cajas abiertas</div><div class="v num">${cajas.length}</div></div>
       <div class="kpi"><div class="k">Facturado ahora</div><div class="v num" style="color:var(--cash)">${money(totalGral)}</div></div>
+      <div class="kpi"><div class="k">👥 Personas ingresadas</div><div class="v num">${gente}</div></div>
     </div>
     ${cajas.map(c=>{const a=agg[c.id];const hs=new Date(c.fecha_apertura).toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
       return `<div class="card" style="margin-bottom:.7rem;padding:1rem">
@@ -1112,25 +1173,33 @@ function repTab(modo){
 }
 async function ticketsDeNoches(nocheIds){
   if(!nocheIds.length) return [];
-  const {data:cajas}=await sb.from('caja').select('id').in('noche_id',nocheIds);
+  const {data:cajas}=await sb.from('caja').select('id,barra_id').in('noche_id',nocheIds);
   const cajaIds=(cajas||[]).map(c=>c.id);
   if(!cajaIds.length) return [];
-  const {data:t}=await sb.from('tickets').select('nombre,precio,forma_pago,estado,numero').in('caja_id',cajaIds);
+  const barraIds=[...new Set((cajas||[]).map(c=>c.barra_id))];
+  const {data:barras}=await sb.from('barras').select('id,es_puerta').in('id',barraIds);
+  const pu={}; (barras||[]).forEach(b=>pu[b.id]=b.es_puerta);
+  const cajaPuerta={}; (cajas||[]).forEach(c=>cajaPuerta[c.id]=!!pu[c.barra_id]);
+  const {data:t}=await sb.from('tickets').select('nombre,precio,forma_pago,estado,numero,caja_id').in('caja_id',cajaIds);
+  (t||[]).forEach(tk=>tk.esEntrada=!!cajaPuerta[tk.caja_id]);
   return t||[];
 }
 function procesarTickets(tks){
   const validos=(tks||[]).filter(t=>t.estado!=='anulado');
   const anulados=(tks||[]).filter(t=>t.estado==='anulado');
   let total=0; const porPago={efectivo:0,transferencia:0,mercadopago:0,tarjeta:0}; const rank={};
+  let gente=0, cortesias=0;
   validos.forEach(t=>{
     const p=Number(t.precio)||0;
     if(t.forma_pago!=='cortesia') total+=p;
     if(porPago[t.forma_pago]!=null) porPago[t.forma_pago]+=p;
-    if(!rank[t.nombre]) rank[t.nombre]={cant:0,monto:0};
-    rank[t.nombre].cant++; rank[t.nombre].monto+=p;
+    if(t.esEntrada){ gente++; if(t.forma_pago==='cortesia') cortesias++; }
+    const key=t.nombre+'||'+p;
+    if(!rank[key]) rank[key]={nombre:t.nombre,precio:p,cant:0,monto:0};
+    rank[key].cant++; rank[key].monto+=p;
   });
-  const ranking=Object.entries(rank).map(([nombre,v])=>({nombre,cant:v.cant,monto:v.monto})).sort((a,b)=>b.cant-a.cant);
-  return {validos,anulados,total,porPago,ranking};
+  const ranking=Object.values(rank).sort((a,b)=>b.cant-a.cant);
+  return {validos,anulados,total,porPago,ranking,gente,cortesias};
 }
 function renderReporte(info,cab){
   const {total,porPago,ranking,validos,anulados}=info;
@@ -1138,11 +1207,11 @@ function renderReporte(info,cab){
     ${cab||''}
     <div class="kpi-row">
       <div class="kpi"><div class="k">Total ventas</div><div class="v num" style="color:var(--cash)">${money(total)}</div></div>
-      <div class="kpi"><div class="k">Tickets vendidos</div><div class="v num">${validos.length}</div></div>
+      <div class="kpi"><div class="k">👥 Personas (entradas)</div><div class="v num">${info.gente}</div></div>
     </div>
     <div class="kpi-row">
+      <div class="kpi"><div class="k">🎟️ Cortesías</div><div class="v num">${info.cortesias}</div></div>
       <div class="kpi"><div class="k">Tickets anulados</div><div class="v num" style="color:var(--danger)">${anulados.length}</div></div>
-      <div class="kpi"><div class="k">Productos distintos</div><div class="v num">${ranking.length}</div></div>
     </div>
     <div class="sec-title">Por medio de pago</div>
     <div style="display:flex;gap:.9rem;flex-wrap:wrap;font-size:.85rem;margin-bottom:.3rem">
@@ -1153,8 +1222,8 @@ function renderReporte(info,cab){
     </div>
     <div class="sec-title">🏆 Ranking de productos</div>
     ${ranking.length?`<div style="overflow-x:auto"><table class="tbl">
-      <thead><tr><th>#</th><th>Producto</th><th>Cant.</th><th>Monto</th></tr></thead>
-      <tbody>${ranking.map((r,i)=>`<tr><td>${i+1}</td><td>${r.nombre}</td><td class="num">${r.cant}</td><td class="num">${money(r.monto)}</td></tr>`).join('')}</tbody>
+      <thead><tr><th>#</th><th>Producto</th><th>P. unit.</th><th>Cant.</th><th>Monto</th></tr></thead>
+      <tbody>${ranking.map((r,i)=>`<tr><td>${i+1}</td><td>${r.nombre}</td><td class="num">${money(r.precio)}</td><td class="num">${r.cant}</td><td class="num">${money(r.monto)}</td></tr>`).join('')}</tbody>
     </table></div>`:'<div class="empty">Sin ventas en este período.</div>'}
     <div class="sec-title">🎟️ Tickets anulados</div>
     ${anulados.length?`<div style="overflow-x:auto"><table class="tbl">
