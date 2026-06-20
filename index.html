@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.1";  // ← subir este número con cada cambio
+const VERSION = "4.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1357,12 +1357,15 @@ async function cerrarNoche(){
 async function admEventos(){
   const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
   const {data}=await sb.from('eventos').select('*').order('nombre');
+  ST._eventosLista=data||[];
   body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="eventoModal()">+ Nuevo evento</button>
     ${(data||[]).map(e=>`<div class="list-item"><div class="li-main"><div class="t">${e.nombre}</div><div class="s">${e.activo?'Activo':'Inactivo'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick="editEvento(${e.id})">✏️</button>
       <button class="btn btn-ghost" style="min-height:38px" onclick="verEvento(${e.id})">Abrir</button>
       <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick="delEvento(${e.id})">🗑</button></div>`).join('')}
     ${(!data||!data.length)?'<div class="empty">Creá tu primer evento (ej: Fiesta Retro) y cargale los tipos de entrada.</div>':''}`;
 }
+function editEvento(id){ const e=(ST._eventosLista||[]).find(x=>x.id===id); if(e) eventoModal(e); }
 function eventoModal(e){
   e=e||{nombre:'',activo:true};
   modal(`<h3>${e.id?'Editar':'Nuevo'} evento</h3>
