@@ -374,7 +374,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "2.6";  // ← subir este número con cada cambio
+const VERSION = "2.7";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -513,12 +513,48 @@ async function enterPOS(){
   $('pos-cajero').textContent='Cajero: '+ST.cajero.nombre;
   $('pos-dot').style.background=barColor(ST.barra);
   ST.cart=[]; ST.cartSel=null; renderCart();
-  $('prod-search').value=''; onSearch();
   go('pos'); buildDrawer();
   cargarMarcaTicket();
-  if(!ST.productos.length) await loadProductos();
-  else renderCats();
-  setTimeout(()=>$('prod-search').focus(),100);
+  ST.esPuerta = !!ST.barra.es_puerta;
+  const sb_=$('prod-search').parentElement;
+  if(ST.esPuerta){
+    if(sb_) sb_.style.display='none';
+    $('search-results').style.display='none'; $('cats').style.display=''; $('prod-grid').style.display='';
+    await cargarEntradasPuerta();
+  } else {
+    if(sb_) sb_.style.display='';
+    $('prod-search').value=''; onSearch();
+    if(!ST.productos.length || ST.productos.some(p=>p.esEntrada)) await loadProductos();
+    else renderCats();
+    setTimeout(()=>$('prod-search').focus(),100);
+  }
+}
+function horaActualMin(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+function franjaVigente(franjas, nowMin){
+  for(const f of (franjas||[])){
+    const [dh,dm]=(f.hora_desde||'0:0').split(':').map(Number);
+    const [hh,hm]=(f.hora_hasta||'0:0').split(':').map(Number);
+    const desde=dh*60+dm, hasta=hh*60+hm;
+    const vig = (desde<=hasta)? (nowMin>=desde&&nowMin<hasta) : (nowMin>=desde||nowMin<hasta);
+    if(vig) return f;
+  }
+  return null;
+}
+async function cargarEntradasPuerta(){
+  $('prod-grid').innerHTML='<div class="spin"></div>';
+  const noche=await getNocheAbierta();
+  if(!noche||!noche.evento_id){ ST.productos=[]; ST.cats=[]; $('cats').innerHTML=''; $('prod-grid').innerHTML='<div class="empty">No hay un evento en la noche. Avisale al administrador.</div>'; return; }
+  const {data:tipos}=await sb.from('entradas_evento').select('*').eq('evento_id',noche.evento_id).eq('activo',true).order('orden').order('nombre');
+  const tids=(tipos||[]).map(t=>t.id);
+  let fbt={};
+  if(tids.length){ const {data:franjas}=await sb.from('franjas_entrada').select('*').in('entrada_id',tids); (franjas||[]).forEach(f=>{(fbt[f.entrada_id]=fbt[f.entrada_id]||[]).push(f);}); }
+  const now=horaActualMin();
+  ST.productos=(tipos||[]).map(t=>{
+    const f=franjaVigente(fbt[t.id]||[], now);
+    return { id:'ent_'+t.id, esEntrada:true, nombre:t.nombre, categoria:'Entradas', precio: f?Number(f.precio):null };
+  });
+  ST.cats=['Entradas']; ST.catActiva='Entradas';
+  renderCats(); renderProds();
 }
 async function cargarMarcaTicket(){
   try{
@@ -556,12 +592,14 @@ function renderCats(){
 }
 function renderProds(){
   const list=ST.productos.filter(p=>p.categoria===ST.catActiva);
-  if(!list.length){ $('prod-grid').innerHTML='<div class="empty">Sin productos en esta categoría.</div>'; return; }
+  if(!list.length){ $('prod-grid').innerHTML='<div class="empty">'+(ST.esPuerta?'No hay entradas para este evento.':'Sin productos en esta categoría.')+'</div>'; return; }
   $('prod-grid').innerHTML='';
   list.forEach(p=>{
     const el=document.createElement('button'); el.className='prod';
-    el.innerHTML=`<div class="pn">${p.nombre}</div><div class="pp num">${money(p.precio)}</div>`;
-    el.onclick=()=>addCart(p);
+    const sinPrecio = p.precio==null;
+    el.innerHTML=`<div class="pn">${p.nombre}</div><div class="pp num">${sinPrecio?'sin precio ahora':money(p.precio)}</div>`;
+    if(sinPrecio){ el.style.opacity='.45'; el.onclick=()=>toast('Ese tipo no tiene precio en este horario','err'); }
+    else el.onclick=()=>addCart(p);
     $('prod-grid').appendChild(el);
   });
 }
@@ -658,7 +696,7 @@ async function confirmarVenta(forma){
     total:tot, forma_pago:forma, estado:'cerrada'
   }).select().single();
   if(error){ closeModal(); toast('No se pudo registrar la venta','err'); return; }
-  const items=ST.cart.map(i=>({venta_id:venta.id,producto_id:i.producto_id,nombre:i.nombre,
+  const items=ST.cart.map(i=>({venta_id:venta.id,producto_id:(typeof i.producto_id==='number'?i.producto_id:null),nombre:i.nombre,
     cantidad:i.cantidad,precio_unitario:i.precio,subtotal:i.precio*i.cantidad}));
   await sb.from('ventas_items').insert(items);
   closeModal();
