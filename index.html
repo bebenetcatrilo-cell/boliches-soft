@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.3";  // ← subir este número con cada cambio
+const VERSION = "4.4";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -779,11 +779,54 @@ function imprimirTicket(tks,forma){
     </div>`;
   });
   $('ticket').innerHTML=html;
+  printArea();
+}
+function printArea(){
   const imgs=$('ticket').querySelectorAll('img');
   if(!imgs.length){ window.print(); return; }
   let pend=imgs.length;
   const go2=()=>{ if(--pend<=0) setTimeout(()=>window.print(),60); };
   imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
+}
+async function imprimirReporte(info,titulo,sub){
+  await cargarMarcaTicket();
+  const {total,porPago,ranking,anulados,gente,cortesias}=info;
+  const hr='<hr>';
+  const fila=(a,b)=>`<div class="tr" style="font-size:13px"><span>${a}</span><span>${b}</span></div>`;
+  const html=`<div class="tk">
+    ${ST.logo
+      ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
+      : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`}
+    <div class="tc big">REPORTE</div>
+    <div class="tc">${titulo}</div>
+    ${sub?`<div class="tc" style="font-size:12px">${sub}</div>`:''}
+    ${hr}
+    ${fila('Total ventas',money(total))}
+    ${fila('Personas (entr.)',gente)}
+    ${fila('Cortesías',cortesias)}
+    ${fila('Anulados',anulados.length)}
+    ${hr}
+    <div class="tc" style="font-weight:900">MEDIOS DE PAGO</div>
+    ${fila('Efectivo',money(porPago.efectivo))}
+    ${fila('Transfer.',money(porPago.transferencia))}
+    ${fila('Mercado Pago',money(porPago.mercadopago))}
+    ${fila('Tarjeta',money(porPago.tarjeta))}
+    ${hr}
+    <div class="tc" style="font-weight:900">RANKING</div>
+    ${ranking.length? ranking.map((r,i)=>`<div style="font-size:13px;margin:2px 0">
+      <div class="tr"><span>${i+1}. ${r.nombre} · ${money(r.precio)}</span></div>
+      <div class="tr" style="font-size:11px"><span>${r.cant} u.</span><span>${money(r.monto)}</span></div>
+    </div>`).join('') : '<div class="tc" style="font-size:12px">Sin ventas</div>'}
+    ${anulados.length? hr+`<div class="tc" style="font-weight:900">ANULADOS</div>`+anulados.map(t=>`<div class="tr" style="font-size:12px"><span>N°${t.numero} ${t.nombre}</span><span>${money(t.precio)}</span></div>`).join('') : ''}
+    ${hr}
+    <div class="tc" style="font-size:10px">Impreso ${new Date().toLocaleString('es-AR')}</div>
+  </div>`;
+  $('ticket').innerHTML=html;
+  printArea();
+}
+function imprimirReporteActual(){
+  if(!ST._repPrint){ toast('Abrí un reporte primero','err'); return; }
+  imprimirReporte(ST._repPrint.info, ST._repPrint.titulo, ST._repPrint.sub);
 }
 
 /* ---------- CAJA (movimientos + cierre) ---------- */
@@ -1191,10 +1234,12 @@ function procesarTickets(tks){
   const ranking=Object.values(rank).sort((a,b)=>b.cant-a.cant);
   return {validos,anulados,total,porPago,ranking,gente,cortesias};
 }
-function renderReporte(info,cab){
+function renderReporte(info,cab,printMeta){
+  ST._repPrint={info, titulo:(printMeta&&printMeta.titulo)||'Reporte', sub:(printMeta&&printMeta.sub)||''};
   const {total,porPago,ranking,validos,anulados}=info;
   $('rep-data').innerHTML=`
     ${cab||''}
+    <button class="btn btn-accent btn-block" style="margin-bottom:1rem" onclick="imprimirReporteActual()">🖨️ Imprimir reporte</button>
     <div class="kpi-row">
       <div class="kpi"><div class="k">Total ventas</div><div class="v num" style="color:var(--cash)">${money(total)}</div></div>
       <div class="kpi"><div class="k">👥 Personas (entradas)</div><div class="v num">${info.gente}</div></div>
@@ -1233,7 +1278,8 @@ async function repNoche(){
   } else {
     cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div class="muted" style="font-size:.85rem">No hay una noche registrada en esa fecha.</div></div>`;
   }
-  renderReporte(procesarTickets(tks),cab);
+  const evN=(noche&&noche.eventos)?noche.eventos.nombre:'Sin evento';
+  renderReporte(procesarTickets(tks),cab,{titulo:'Noche del '+fecha, sub:evN});
 }
 async function repEvento(){
   const ev=$('rep-evento').value; if(!ev){ renderReporte(procesarTickets([]),''); return; }
@@ -1243,7 +1289,7 @@ async function repEvento(){
   const tks=await ticketsDeNoches(nocheIds);
   const evName=((ST._eventos||[]).find(e=>String(e.id)===String(ev))||{}).nombre||'';
   const cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div style="font-size:.8rem;color:var(--muted)">Evento</div><div style="font-weight:600;margin-top:.2rem">🎫 ${evName}</div><div class="muted" style="font-size:.8rem;margin-top:.2rem">${nocheIds.length} noche(s) registrada(s)</div></div>`;
-  renderReporte(procesarTickets(tks),cab);
+  renderReporte(procesarTickets(tks),cab,{titulo:'Evento: '+evName, sub:nocheIds.length+' noche(s)'});
 }
 
 /* ---------- ADMIN · ANULAR TICKET ---------- */
