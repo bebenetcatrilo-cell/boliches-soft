@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.0";  // ← subir este número con cada cambio
+const VERSION = "4.1";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -559,15 +559,6 @@ async function cargarEntradasPuerta(){
   });
   ST.cats=['Entradas']; ST.catActiva='Entradas';
   renderCats(); renderProds();
-  let banner=$('aforo-banner');
-  if(!banner){
-    banner=document.createElement('div'); banner.id='aforo-banner';
-    banner.style.cssText='background:var(--surface-2);border-radius:var(--radius-sm);padding:.5rem .8rem;margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center;font-size:.92rem';
-    const cont=$('cats').parentElement; cont.insertBefore(banner,$('cats'));
-  }
-  banner.style.display='';
-  banner.innerHTML=`<span>👥 Personas ingresadas: <b id="aforo-num" style="color:var(--cash)">…</b></span><button class="btn btn-ghost" style="min-height:30px;padding:.2rem .7rem" onclick="refrescarAforo()">↻</button>`;
-  refrescarAforo();
 }
 async function cargarMarcaTicket(){
   try{
@@ -765,7 +756,6 @@ async function confirmarVenta(forma){
   imprimirTicket(tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio})),forma);
   toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
   ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
-  if(ST.esPuerta) refrescarAforo();
 }
 function imprimirTicket(tks,forma){
   const hora=new Date().toLocaleString('es-AR');
