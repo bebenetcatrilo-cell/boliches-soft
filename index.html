@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "4.2";  // ← subir este número con cada cambio
+const VERSION = "4.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1361,7 +1361,7 @@ async function admEventos(){
   body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="eventoModal()">+ Nuevo evento</button>
     ${(data||[]).map(e=>`<div class="list-item"><div class="li-main"><div class="t">${e.nombre}</div><div class="s">${e.activo?'Activo':'Inactivo'}</div></div>
       <button class="btn btn-ghost" style="min-height:38px" onclick="editEvento(${e.id})">✏️</button>
-      <button class="btn btn-ghost" style="min-height:38px" onclick="verEvento(${e.id})">Abrir</button>
+      <button class="btn btn-accent" style="min-height:38px" onclick="verEvento(${e.id})">🎟️ Precios</button>
       <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick="delEvento(${e.id})">🗑</button></div>`).join('')}
     ${(!data||!data.length)?'<div class="empty">Creá tu primer evento (ej: Fiesta Retro) y cargale los tipos de entrada.</div>':''}`;
 }
@@ -1402,6 +1402,7 @@ async function verEvento(id){
   body.innerHTML=`
     <button class="btn btn-ghost" style="margin-bottom:.6rem" onclick="admEventos()">‹ Volver a eventos</button>
     <div class="sec-title">🎫 ${ev.nombre}</div>
+    <p class="muted" style="font-size:.8rem;margin:-.2rem 0 .6rem">Tocá <b>Editar</b> en cada franja para cambiar el <b>precio</b> o el <b>horario</b>. Con <b>+ Franja horaria</b> agregás un tramo nuevo.</p>
     <button class="btn btn-accent btn-block" style="margin:.5rem 0 1rem" onclick="tipoModal(${id})">+ Tipo de entrada</button>
     ${(tipos||[]).map(t=>{
       const fr=fbt[t.id]||[];
