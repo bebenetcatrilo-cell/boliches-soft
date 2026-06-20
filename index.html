@@ -375,7 +375,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "3.4";  // ← subir este número con cada cambio
+const VERSION = "3.5";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -737,7 +737,11 @@ function imprimirTicket(tks,forma){
     </div>`;
   });
   $('ticket').innerHTML=html;
-  window.print();
+  const imgs=$('ticket').querySelectorAll('img');
+  if(!imgs.length){ window.print(); return; }
+  let pend=imgs.length;
+  const go2=()=>{ if(--pend<=0) setTimeout(()=>window.print(),60); };
+  imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
 }
 
 /* ---------- CAJA (movimientos + cierre) ---------- */
