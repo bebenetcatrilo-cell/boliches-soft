@@ -374,7 +374,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "2.3";  // ← subir este número con cada cambio
+const VERSION = "2.5";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -431,6 +431,7 @@ function buildDrawer(){
     h+=`<div class="drawer-sec">Administración</div>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajas')">🧾 Cajas</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('eventos')">🎫 Eventos</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('barras')">🍺 Barras y entradas</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('productos')">🏷️ Productos</button>`;
@@ -864,6 +865,7 @@ function adminTab(t,btn){
   if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
   if(t==='monitoreo') admMonitoreo();
   if(t==='cajas') admCajas();
+  if(t==='eventos') admEventos();
   if(t==='central') admCentral();
   if(t==='barras') admBarras();
   if(t==='productos') admProductos();
@@ -948,6 +950,118 @@ async function saveCierre(fecha){
   const {error}=await sb.from('cierres_noche').upsert({fecha,entradas_manual:entradas,guardarropa_manual:guarda,usuario_id:ST.admin?.id||null},{onConflict:'fecha'});
   if(error){ toast('No se pudo guardar','err'); return; }
   toast('Cierre de noche guardado','ok'); renderCentral();
+}
+
+/* ---------- ADMIN · EVENTOS (catálogo reutilizable) ---------- */
+async function admEventos(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data}=await sb.from('eventos').select('*').order('nombre');
+  body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="eventoModal()">+ Nuevo evento</button>
+    ${(data||[]).map(e=>`<div class="list-item"><div class="li-main"><div class="t">${e.nombre}</div><div class="s">${e.activo?'Activo':'Inactivo'}</div></div>
+      <button class="btn btn-ghost" style="min-height:38px" onclick="verEvento(${e.id})">Abrir</button>
+      <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick="delEvento(${e.id})">🗑</button></div>`).join('')}
+    ${(!data||!data.length)?'<div class="empty">Creá tu primer evento (ej: Fiesta Retro) y cargale los tipos de entrada.</div>':''}`;
+}
+function eventoModal(e){
+  e=e||{nombre:'',activo:true};
+  modal(`<h3>${e.id?'Editar':'Nuevo'} evento</h3>
+    <div class="field"><label>Nombre del evento</label><input id="ev-nombre" value="${e.nombre}" placeholder="ej: Fiesta Retro"></div>
+    <div class="field"><label><input type="checkbox" id="ev-activo" ${e.activo?'checked':''} style="width:auto;margin-right:.4rem">Activo</label></div>
+    <button class="btn btn-primary btn-block" onclick="saveEvento(${e.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveEvento(id){
+  const rec={nombre:$('ev-nombre').value.trim(),activo:$('ev-activo').checked};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  const q=id? sb.from('eventos').update(rec).eq('id',id) : sb.from('eventos').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
+  closeModal(); toast('Evento guardado','ok'); admEventos();
+}
+async function delEvento(id){
+  if(!confirm('¿Borrar este evento y sus tipos de entrada?')) return;
+  const {error}=await sb.from('eventos').delete().eq('id',id);
+  if(error){ toast('No se puede borrar: ya se usó en una noche. Mejor desactivalo.','err'); return; }
+  toast('Evento borrado','ok'); admEventos();
+}
+async function verEvento(id){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const {data:ev}=await sb.from('eventos').select('*').eq('id',id).maybeSingle();
+  if(!ev){ admEventos(); return; }
+  const {data:tipos}=await sb.from('entradas_evento').select('*').eq('evento_id',id).order('orden').order('nombre');
+  let fbt={};
+  if(tipos&&tipos.length){
+    const tids=tipos.map(t=>t.id);
+    const {data:franjas}=await sb.from('franjas_entrada').select('*').in('entrada_id',tids).order('hora_desde');
+    (franjas||[]).forEach(f=>{ (fbt[f.entrada_id]=fbt[f.entrada_id]||[]).push(f); });
+  }
+  const hhmm=(t)=>(t||'').slice(0,5);
+  body.innerHTML=`
+    <button class="btn btn-ghost" style="margin-bottom:.6rem" onclick="admEventos()">‹ Volver a eventos</button>
+    <div class="sec-title">🎫 ${ev.nombre}</div>
+    <button class="btn btn-accent btn-block" style="margin:.5rem 0 1rem" onclick="tipoModal(${id})">+ Tipo de entrada</button>
+    ${(tipos||[]).map(t=>{
+      const fr=fbt[t.id]||[];
+      return `<div class="card" style="padding:.9rem 1rem;margin-bottom:.8rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="font-weight:700;font-family:'Space Grotesk'">${t.nombre}</div>
+          <div><button class="btn btn-ghost" style="min-height:34px" onclick='tipoModal(${id},${JSON.stringify(t)})'>Editar</button>
+          <button class="btn btn-ghost" style="min-height:34px;color:#ff5a6e" onclick="delTipo(${t.id},${id})">🗑</button></div>
+        </div>
+        <div style="margin-top:.4rem">
+          ${fr.length? fr.map(f=>`<div class="list-item" style="padding:.4rem 0"><div class="li-main"><div class="s">${hhmm(f.hora_desde)} a ${hhmm(f.hora_hasta)}</div></div>
+            <div class="num" style="font-weight:600;margin-right:.4rem">${money(f.precio)}</div>
+            <button class="btn btn-ghost" style="min-height:32px" onclick='franjaModal(${t.id},${id},${JSON.stringify(f)})'>Editar</button>
+            <button class="btn btn-ghost" style="min-height:32px;color:#ff5a6e" onclick="delFranja(${f.id},${id})">🗑</button></div>`).join('')
+            : '<p class="muted" style="font-size:.8rem">Sin franjas horarias.</p>'}
+          <button class="btn btn-ghost btn-block" style="margin-top:.4rem" onclick="franjaModal(${t.id},${id})">+ Franja horaria</button>
+        </div>
+      </div>`;
+    }).join('')}
+    ${(!tipos||!tipos.length)?'<div class="empty">Agregá un tipo de entrada (ej: General, VIP) y después sus horarios.</div>':''}
+    <div style="height:1rem"></div>`;
+}
+function tipoModal(eventoId,t){
+  t=t||{nombre:'',orden:0};
+  modal(`<h3>${t.id?'Editar':'Nuevo'} tipo de entrada</h3>
+    <div class="field"><label>Nombre</label><input id="ti-nombre" value="${t.nombre}" placeholder="General, VIP…"></div>
+    <div class="field"><label>Orden</label><input id="ti-orden" type="number" value="${t.orden||0}"></div>
+    <button class="btn btn-primary btn-block" onclick="saveTipo(${eventoId},${t.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveTipo(eventoId,id){
+  const rec={nombre:$('ti-nombre').value.trim(),orden:parseInt($('ti-orden').value)||0,evento_id:eventoId};
+  if(!rec.nombre){ toast('Poné un nombre','err'); return; }
+  const q=id? sb.from('entradas_evento').update(rec).eq('id',id) : sb.from('entradas_evento').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
+  closeModal(); toast('Tipo guardado','ok'); verEvento(eventoId);
+}
+async function delTipo(id,eventoId){
+  if(!confirm('¿Borrar este tipo de entrada y sus franjas?')) return;
+  await sb.from('entradas_evento').delete().eq('id',id);
+  toast('Tipo borrado','ok'); verEvento(eventoId);
+}
+function franjaModal(tipoId,eventoId,f){
+  f=f||{hora_desde:'00:00',hora_hasta:'06:00',precio:0};
+  const hhmm=(t)=>(t||'').slice(0,5);
+  modal(`<h3>${f.id?'Editar':'Nueva'} franja horaria</h3>
+    <div class="row" style="gap:.6rem">
+      <div class="field" style="flex:1"><label>Desde</label><input id="fr-desde" type="time" value="${hhmm(f.hora_desde)||'00:00'}"></div>
+      <div class="field" style="flex:1"><label>Hasta</label><input id="fr-hasta" type="time" value="${hhmm(f.hora_hasta)||'06:00'}"></div>
+    </div>
+    <div class="field"><label>Precio</label><input id="fr-precio" type="number" inputmode="decimal" value="${f.precio||0}"></div>
+    <button class="btn btn-primary btn-block" onclick="saveFranja(${tipoId},${eventoId},${f.id||'null'})">Guardar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function saveFranja(tipoId,eventoId,id){
+  const rec={entrada_id:tipoId,hora_desde:$('fr-desde').value,hora_hasta:$('fr-hasta').value,precio:parseFloat($('fr-precio').value)||0};
+  if(!rec.hora_desde||!rec.hora_hasta){ toast('Completá los horarios','err'); return; }
+  const q=id? sb.from('franjas_entrada').update(rec).eq('id',id) : sb.from('franjas_entrada').insert(rec);
+  const {error}=await q; if(error){ toast('No se pudo guardar','err'); return; }
+  closeModal(); toast(id?'Precio actualizado':'Franja guardada','ok'); verEvento(eventoId);
+}
+async function delFranja(id,eventoId){
+  await sb.from('franjas_entrada').delete().eq('id',id);
+  toast('Franja borrada','ok'); verEvento(eventoId);
 }
 
 async function admBarras(){
