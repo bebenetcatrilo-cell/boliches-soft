@@ -374,7 +374,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "2.5";  // ← subir este número con cada cambio
+const VERSION = "2.6";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -429,6 +429,7 @@ function buildDrawer(){
     }
   } else {
     h+=`<div class="drawer-sec">Administración</div>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('noche')">🌙 Noche</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('cajas')">🧾 Cajas</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('eventos')">🎫 Eventos</button>`;
@@ -451,7 +452,7 @@ async function afterLogin(){
   ST.modo = (ST.admin.rol==='terminal') ? 'terminal' : 'admin';
   document.body.classList.add('logged');
   buildDrawer();
-  if(ST.modo==='admin'){ go('admin'); adminTab('monitoreo'); return; }
+  if(ST.modo==='admin'){ go('admin'); adminTab('noche'); return; }
   // modo terminal: retomar caja abierta o pedir PIN del cajero
   const saved = localStorage.getItem('bs_term');
   if(saved){
@@ -786,19 +787,13 @@ async function admCajas(){
   };
   body.innerHTML=`
     <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem">Datos de la noche (salen en los tickets)</div>
-      <div class="field"><label>Nombre del boliche</label><input id="cfg-boliche" value="${boliche}" placeholder="Wikend"></div>
-      <div class="field"><label>Evento de esta noche</label><input id="cfg-evento" value="${evento}" placeholder="ej: Fiesta Retro"></div>
-      <button class="btn btn-accent btn-block" onclick="guardarDatosNoche()">Guardar datos de la noche</button>
+      <div style="font-size:.8rem;color:var(--muted)">Noche</div>
+      ${evento? `<div style="font-weight:600;margin:.25rem 0">🌙 ${evento} · ${ln[la]||('Lista '+la)}</div>`
+              : `<div class="muted" style="font-size:.85rem;margin:.3rem 0">No hay noche abierta. Abrila desde 🌙 Noche para poder abrir cajas.</div>`}
     </div>
     <div class="card" style="padding:.9rem 1rem;margin-bottom:1rem">
-      <div style="font-size:.8rem;color:var(--muted);margin-bottom:.4rem">Lista de precios de la noche</div>
-      <select id="lista-noche" onchange="setListaNoche(this.value)">
-        <option value="1"${la==='1'?' selected':''}>${ln[1]}</option>
-        <option value="2"${la==='2'?' selected':''}>${ln[2]}</option>
-        <option value="3"${la==='3'?' selected':''}>${ln[3]}</option>
-      </select>
-      <p class="muted" style="font-size:.72rem;margin-top:.4rem">Todas las barras cobran con esta lista. Cambiala antes de abrir las cajas.</p>
+      <div class="field" style="margin:0"><label>Nombre del boliche (sale en los tickets)</label><input id="cfg-boliche" value="${boliche}" placeholder="Wikend"></div>
+      <button class="btn btn-accent btn-block" style="margin-top:.6rem" onclick="guardarBoliche()">Guardar</button>
     </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
@@ -807,7 +802,16 @@ async function admCajas(){
     ${grupo(true)}
     <div style="height:1rem"></div>`;
 }
+async function guardarBoliche(){
+  const boliche=$('cfg-boliche').value.trim()||'Wikend';
+  const {error}=await sb.from('config').upsert({clave:'nombre_boliche',valor:boliche},{onConflict:'clave'});
+  if(error){ toast('No se pudo guardar','err'); return; }
+  ST.boliche=boliche; toast('Guardado','ok');
+}
 async function admAbrirModal(){
+  const noche=await getNocheAbierta();
+  if(!noche){ toast('Abrí la noche primero (🌙 Noche)','err'); return; }
+  ST._nocheId=noche.id;
   const [{data:barras},{data:abiertas}]=await Promise.all([
     sb.from('barras').select('*').eq('activa',true).order('es_puerta').order('orden'),
     sb.from('caja').select('barra_id').eq('estado','abierta')
@@ -825,7 +829,9 @@ async function admAbrirModal(){
 async function admDoAbrir(){
   const barra_id=parseInt($('ac-barra').value);
   const fondo=parseFloat($('ac-fondo').value)||0;
-  const {error}=await sb.from('caja').insert({barra_id,usuario_id:ST.admin&&ST.admin.id?ST.admin.id:null,monto_inicial:fondo,estado:'abierta'});
+  const rec={barra_id,usuario_id:ST.admin&&ST.admin.id?ST.admin.id:null,monto_inicial:fondo,estado:'abierta'};
+  if(ST._nocheId) rec.noche_id=ST._nocheId;
+  const {error}=await sb.from('caja').insert(rec);
   if(error){ toast('No se pudo abrir (¿ya hay una caja abierta en ese sector?)','err'); return; }
   closeModal(); toast('Caja abierta','ok'); admCajas();
 }
@@ -863,6 +869,7 @@ async function admDoCerrar(){
 function openAdmin(){ go('admin'); adminTab('central'); }
 function adminTab(t,btn){
   if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  if(t==='noche') admNoche();
   if(t==='monitoreo') admMonitoreo();
   if(t==='cajas') admCajas();
   if(t==='eventos') admEventos();
@@ -950,6 +957,79 @@ async function saveCierre(fecha){
   const {error}=await sb.from('cierres_noche').upsert({fecha,entradas_manual:entradas,guardarropa_manual:guarda,usuario_id:ST.admin?.id||null},{onConflict:'fecha'});
   if(error){ toast('No se pudo guardar','err'); return; }
   toast('Cierre de noche guardado','ok'); renderCentral();
+}
+
+/* ---------- ADMIN · NOCHE (paraguas de la operación) ---------- */
+async function getNocheAbierta(){
+  try{ const {data}=await sb.from('noches').select('*').eq('estado','abierta').order('id',{ascending:false}).limit(1).maybeSingle(); return data||null; }
+  catch(e){ return null; }
+}
+async function admNoche(){
+  const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
+  const noche=await getNocheAbierta();
+  if(!noche){
+    body.innerHTML=`
+      <div class="empty">No hay ninguna noche abierta.</div>
+      <button class="btn btn-primary btn-block btn-lg" style="margin-top:1rem" onclick="abrirNocheModal()">🌙 Abrir noche</button>
+      <p class="muted" style="font-size:.82rem;text-align:center;margin-top:.8rem">Para abrir cajas primero tenés que abrir la noche.</p>`;
+    return;
+  }
+  const [{data:ev},{data:cajas},{data:cfgL}]=await Promise.all([
+    noche.evento_id? sb.from('eventos').select('nombre').eq('id',noche.evento_id).maybeSingle() : Promise.resolve({data:null}),
+    sb.from('caja').select('id').eq('estado','abierta'),
+    sb.from('config').select('clave,valor').in('clave',['lista1_nombre','lista2_nombre','lista3_nombre'])
+  ]);
+  const cm={}; (cfgL||[]).forEach(r=>cm[r.clave]=r.valor);
+  const ln={1:cm.lista1_nombre||'Lista 1',2:cm.lista2_nombre||'Lista 2',3:cm.lista3_nombre||'Lista 3'};
+  const abierta=new Date(noche.abierta_at).toLocaleString('es-AR');
+  const nAbiertas=(cajas||[]).length;
+  body.innerHTML=`
+    <div class="card" style="padding:1rem;margin-bottom:1rem">
+      <div style="font-size:.78rem;color:var(--muted)">🌙 Noche abierta</div>
+      <div style="font-weight:700;font-family:'Space Grotesk';font-size:1.15rem;margin:.25rem 0">${ev?ev.nombre:'(sin evento)'}</div>
+      <div class="muted" style="font-size:.85rem">Lista: ${ln[noche.lista_precios]||('Lista '+noche.lista_precios)} · desde ${abierta}</div>
+    </div>
+    <button class="btn btn-danger btn-block btn-lg" onclick="cerrarNoche()">Cerrar la noche</button>
+    ${nAbiertas?`<p class="muted" style="font-size:.82rem;text-align:center;margin-top:.8rem">Hay ${nAbiertas} caja(s) abierta(s). Cerralas desde 🧾 Cajas antes de cerrar la noche.</p>`:''}
+    <div style="height:1rem"></div>`;
+}
+async function abrirNocheModal(){
+  const [{data:eventos},{data:cfg}]=await Promise.all([
+    sb.from('eventos').select('*').eq('activo',true).order('nombre'),
+    sb.from('config').select('clave,valor').in('clave',['lista1_nombre','lista2_nombre','lista3_nombre'])
+  ]);
+  if(!eventos||!eventos.length){ toast('Primero cargá un evento en 🎫 Eventos','err'); return; }
+  const cm={}; (cfg||[]).forEach(r=>cm[r.clave]=r.valor);
+  const ln={1:cm.lista1_nombre||'Lista 1',2:cm.lista2_nombre||'Lista 2',3:cm.lista3_nombre||'Lista 3'};
+  const evOpts=eventos.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
+  modal(`<h3>Abrir noche</h3>
+    <div class="field"><label>Evento</label><select id="nf-evento">${evOpts}</select></div>
+    <div class="field"><label>Lista de precios de barra</label>
+      <select id="nf-lista"><option value="1">${ln[1]}</option><option value="2">${ln[2]}</option><option value="3">${ln[3]}</option></select>
+    </div>
+    <button class="btn btn-cash btn-block btn-lg" onclick="doAbrirNoche()">Abrir noche</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function doAbrirNoche(){
+  const evento_id=parseInt($('nf-evento').value);
+  const lista=$('nf-lista').value;
+  const {data:ev}=await sb.from('eventos').select('nombre').eq('id',evento_id).maybeSingle();
+  const {error}=await sb.from('noches').insert({evento_id,lista_precios:lista,estado:'abierta'});
+  if(error){ toast('No se pudo abrir la noche','err'); return; }
+  await sb.from('config').upsert([
+    {clave:'lista_activa',valor:lista},
+    {clave:'evento_actual',valor:ev?ev.nombre:''}
+  ],{onConflict:'clave'});
+  closeModal(); toast('Noche abierta','ok'); admNoche();
+}
+async function cerrarNoche(){
+  const noche=await getNocheAbierta();
+  if(!noche){ admNoche(); return; }
+  const {data:cajas}=await sb.from('caja').select('id').eq('estado','abierta');
+  if(cajas&&cajas.length){ toast(`Cerrá primero las ${cajas.length} caja(s) abierta(s)`,'err'); return; }
+  if(!confirm('¿Cerrar la noche? No se van a poder abrir más cajas hasta abrir una noche nueva.')) return;
+  await sb.from('noches').update({estado:'cerrada',cerrada_at:new Date().toISOString()}).eq('id',noche.id);
+  toast('Noche cerrada','ok'); admNoche();
 }
 
 /* ---------- ADMIN · EVENTOS (catálogo reutilizable) ---------- */
