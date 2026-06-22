@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.1";  // ← subir este número con cada cambio
+const VERSION = "5.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -439,6 +439,7 @@ function buildDrawer(){
     h+=`<div class="drawer-sec">Durante la noche</div>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('monitoreo')">📡 Monitoreo en vivo</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('tickets')">🎟️ Anular ticket</button>`;
+    h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('estacion')">🖨️ Estación de impresión</button>`;
     h+=`<div class="drawer-sec">Cierre y reportes</div>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('central')">📊 Caja de la noche</button>`;
     h+=`<button class="drawer-item" onclick="closeDrawer();go('admin');adminTab('reportes')">📈 Reportes</button>`;
@@ -569,11 +570,12 @@ async function cargarEntradasPuerta(){
 }
 async function cargarMarcaTicket(){
   try{
-    const {data}=await sb.from('config').select('clave,valor').in('clave',['nombre_boliche','evento_actual','logo']);
+    const {data}=await sb.from('config').select('clave,valor').in('clave',['nombre_boliche','evento_actual','logo','estacion_impresion']);
     const c={}; (data||[]).forEach(r=>c[r.clave]=r.valor);
     ST.boliche=c.nombre_boliche||'WIKEND';
     ST.evento=c.evento_actual||'';
     ST.logo=c.logo||'';
+    ST.estacion=(c.estacion_impresion==='1');
   }catch(e){ ST.boliche=ST.boliche||'WIKEND'; ST.evento=ST.evento||''; }
 }
 async function loadProductos(){
@@ -760,8 +762,17 @@ async function confirmarVenta(forma){
   else { const {data:t2}=await sb.from('tickets').select('numero,nombre,precio').eq('venta_id',venta.id).order('numero'); if(t2&&t2.length) tks=t2; }
   await cargarMarcaTicket();
   closeModal();
-  imprimirTicket(tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio})),forma);
-  toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
+  const vales = tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio}));
+  if(ST.estacion){
+    try{
+      await sb.from('impresiones').insert({tipo:'ticket',estado:'pendiente',
+        payload:{tks:vales,forma,barra:ST.barra?ST.barra.nombre:'',evento:ST.evento||''}});
+      toast(esCortesia?'Cortesía enviada a impresión':'Ticket enviado a impresión','ok');
+    }catch(e){ toast('No se pudo enviar a la estación','err'); }
+  } else {
+    imprimirTicket(vales,forma);
+    toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
+  }
   ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
 }
 function imprimirTicket(tks,forma){
@@ -915,7 +926,7 @@ async function admCajas(){
   const [{data:cajas},{data:barras},{data:cfg}]=await Promise.all([
     sb.from('caja').select('*').eq('estado','abierta').order('barra_id'),
     sb.from('barras').select('*').order('orden'),
-    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual','logo','pin_cortesia'])
+    sb.from('config').select('clave,valor').in('clave',['lista_activa','lista1_nombre','lista2_nombre','lista3_nombre','nombre_boliche','evento_actual','logo','pin_cortesia','estacion_impresion'])
   ]);
   const cmap={}; (cfg||[]).forEach(r=>cmap[r.clave]=r.valor);
   const la=cmap.lista_activa||'1';
@@ -923,6 +934,7 @@ async function admCajas(){
   const evento=cmap.evento_actual||'';
   const logo=cmap.logo||'';
   const pincort=cmap.pin_cortesia||'';
+  const estacion=(cmap.estacion_impresion==='1');
   ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
   const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
@@ -960,6 +972,13 @@ async function admCajas(){
       </div>
       <div class="field" style="margin-top:1rem"><label>PIN de cortesías (puerta)</label><input id="cfg-pincort" value="${pincort}" placeholder="ej. 9999" inputmode="numeric"></div>
       <button class="btn btn-accent btn-block" onclick="guardarPinCort()">Guardar PIN cortesías</button>
+      <div style="margin-top:1.1rem;border-top:1px solid var(--border);padding-top:.9rem">
+        <label style="display:flex;align-items:center;gap:.6rem;font-size:.95rem;font-weight:600">
+          <input type="checkbox" id="cfg-estacion" ${estacion?'checked':''} onchange="guardarEstacion()" style="width:auto;transform:scale(1.3)">
+          🖨️ Estación de impresión
+        </label>
+        <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.4rem 0 0">Si está activa, los celulares/terminales <b>no imprimen</b>: mandan el ticket a la cola y lo imprime la PC que tengas abierta en 🖨️ Estación. Si está apagada, cada equipo imprime en su propia impresora.</p>
+      </div>
     </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
@@ -1025,6 +1044,13 @@ async function guardarPinCort(){
   if(error){ toast('No se pudo guardar','err'); return; }
   toast(v?'PIN de cortesías guardado':'PIN de cortesías borrado','ok');
 }
+async function guardarEstacion(){
+  const on=$('cfg-estacion').checked;
+  const {error}=await sb.from('config').upsert({clave:'estacion_impresion',valor:on?'1':'0'},{onConflict:'clave'});
+  if(error){ toast('No se pudo guardar','err'); $('cfg-estacion').checked=!on; return; }
+  ST.estacion=on;
+  toast(on?'Estación de impresión activada':'Estación desactivada (cada equipo imprime)','ok');
+}
 async function admAbrirModal(){
   const noche=await getNocheAbierta();
   if(!noche){ toast('Abrí la noche primero (🌙 Noche)','err'); return; }
@@ -1088,9 +1114,11 @@ async function admDoCerrar(){
 function openAdmin(){ go('admin'); adminTab('central'); }
 function adminTab(t,btn){
   if(btn){ document.querySelectorAll('#scr-admin .tabbar button').forEach(b=>b.classList.remove('active')); btn.classList.add('active'); }
+  if(_estacionTimer && t!=='estacion'){ clearInterval(_estacionTimer); _estacionTimer=null; }
   if(t==='noche') admNoche();
   if(t==='monitoreo') admMonitoreo();
   if(t==='cajas') admCajas();
+  if(t==='estacion') admEstacion();
   if(t==='tickets') admTickets();
   if(t==='eventos') admEventos();
   if(t==='central') admCentral();
@@ -1099,6 +1127,67 @@ function adminTab(t,btn){
   if(t==='productos') admProductos();
   if(t==='categorias') admCategorias();
   if(t==='cajeros') admCajeros();
+}
+
+/* ---------- ESTACIÓN DE IMPRESIÓN ---------- */
+let _estacionTimer=null, _estacionImprimiendo=false, _estacionCount=0;
+function admEstacion(){
+  if(_estacionTimer){ clearInterval(_estacionTimer); _estacionTimer=null; }
+  _estacionCount=0;
+  $('admin-body').innerHTML=`
+    <div class="card" style="padding:1.2rem;margin-bottom:1rem;text-align:center">
+      <div style="font-size:2.6rem;line-height:1">🖨️</div>
+      <div style="font-weight:700;font-family:'Space Grotesk';font-size:1.15rem;margin-top:.4rem">Estación de impresión</div>
+      <div class="muted" style="font-size:.85rem;margin-top:.4rem;line-height:1.4">Dejá esta pantalla abierta en la PC que tiene la impresora. Imprime sola los tickets que mandan los celulares, en orden de llegada.</div>
+      <div id="est-status" style="margin-top:1rem;font-weight:700;color:var(--cash)">🟢 Escuchando la cola…</div>
+      <div id="est-count" class="muted" style="font-size:.82rem;margin-top:.3rem">Impresos en esta sesión: 0</div>
+    </div>
+    <div class="card" style="padding:.8rem">
+      <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Últimos impresos</div>
+      <div id="est-log" style="font-size:.82rem"><div class="muted">Esperando tickets…</div></div>
+    </div>`;
+  procesarColaImpresion();
+  _estacionTimer=setInterval(procesarColaImpresion,4000);
+}
+async function procesarColaImpresion(){
+  if(_estacionImprimiendo) return;
+  _estacionImprimiendo=true;
+  try{
+    const {data:pend}=await sb.from('impresiones').select('*').eq('estado','pendiente').order('created_at').limit(5);
+    if(pend&&pend.length){
+      await cargarMarcaTicket();
+      for(const job of pend){
+        const {data:upd}=await sb.from('impresiones')
+          .update({estado:'imprimiendo',tomada_at:new Date().toISOString()})
+          .eq('id',job.id).eq('estado','pendiente').select();
+        if(!upd||!upd.length) continue; // otra estación lo tomó
+        try{ imprimirDesdePayload(job.payload); }catch(e){}
+        await new Promise(r=>setTimeout(r,1700));
+        await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',job.id);
+        _estacionCount++;
+        const lg=$('est-log'); if(lg){
+          if(lg.querySelector('.muted')&&_estacionCount===1) lg.innerHTML='';
+          const tk=(job.payload&&job.payload.tks&&job.payload.tks[0])||{};
+          const d=document.createElement('div');
+          d.style.cssText='padding:.35rem 0;border-bottom:1px solid var(--border)';
+          d.textContent=`✓ N° ${tk.numero||'—'} · ${tk.nombre||''} · ${new Date().toLocaleTimeString('es-AR')}`;
+          lg.prepend(d);
+          while(lg.children.length>15) lg.removeChild(lg.lastChild);
+        }
+      }
+      const c=$('est-count'); if(c) c.textContent='Impresos en esta sesión: '+_estacionCount;
+    }
+    const st=$('est-status'); if(st){ st.textContent='🟢 Escuchando la cola…'; st.style.color='var(--cash)'; }
+  }catch(e){
+    const st=$('est-status'); if(st){ st.textContent='🔴 Sin conexión, reintentando…'; st.style.color='var(--danger)'; }
+  }
+  _estacionImprimiendo=false;
+}
+function imprimirDesdePayload(p){
+  if(!p||!p.tks) return;
+  ST.barra={nombre:p.barra||(ST.boliche||'WIKEND')};
+  ST.evento=p.evento||ST.evento||'';
+  imprimirTicket(p.tks,p.forma||'efectivo');
 }
 function nightRange(dateStr){ // ventana 18:00 del día → 12:00 del siguiente
   const d=new Date(dateStr+'T18:00:00'); const e=new Date(d); e.setDate(e.getDate()+1); e.setHours(12,0,0,0);
