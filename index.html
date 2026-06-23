@@ -210,13 +210,20 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 
 @media(max-width:680px){
   .pos-body{flex-direction:column}
-  .pos-products{flex:0 0 auto;overflow:visible}
-  .cats{display:none!important}
-  .prod-grid{display:none!important}
-  .search-results{max-height:52vh}
-  .cart{position:static;width:100%;height:auto;flex:1 1 auto;min-height:0;transform:none;
-    border-left:none;border-top:1px solid var(--border);border-radius:0;z-index:auto}
   .cart-handle{display:none}
+  .search-results{max-height:52vh}
+  .cart{position:static;width:100%;transform:none;border-left:none;border-top:1px solid var(--border);border-radius:0;z-index:auto}
+
+  /* BARRA: solo buscador arriba + carrito ocupa el resto */
+  body:not(.puerta) .pos-products{flex:0 0 auto;overflow:visible}
+  body:not(.puerta) .cats{display:none!important}
+  body:not(.puerta) .prod-grid{display:none!important}
+  body:not(.puerta) .cart{height:auto;flex:1 1 auto;min-height:0}
+
+  /* ENTRADAS (puerta): grid de entradas arriba (scroll) + carrito abajo */
+  body.puerta .pos-products{flex:1 1 auto;overflow:hidden;min-height:0}
+  body.puerta .prod-grid{flex:1;overflow-y:auto}
+  body.puerta .cart{height:auto;flex:0 0 auto;max-height:46vh;min-height:0}
 }
 @media(min-width:681px){.cart-handle{display:none}}
 
@@ -379,7 +386,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "6.7";  // ← subir este número con cada cambio
+const VERSION = "6.8";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -528,6 +535,7 @@ async function enterPOS(){
   go('pos'); buildDrawer();
   cargarMarcaTicket();
   ST.esPuerta = !!ST.barra.es_puerta;
+  document.body.classList.toggle('puerta', ST.esPuerta);
   const sb_=$('prod-search').parentElement;
   if(ST.esPuerta){
     if(sb_) sb_.style.display='none';
