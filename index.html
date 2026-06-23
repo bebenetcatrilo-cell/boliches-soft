@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.9";  // ← subir este número con cada cambio
+const VERSION = "6.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -792,37 +792,18 @@ function imprimirTicket(tks,forma){
       <div class="tc" style="font-size:10px">${hora}</div>
     </div>`;
   });
-  return printTicketHTML(html);
+  $('ticket').innerHTML=html;
+  return printNow();
 }
-function printTicketHTML(inner){
-  return new Promise(resolve=>{
-    const ifr=document.createElement('iframe');
-    ifr.setAttribute('aria-hidden','true');
-    ifr.style.cssText='position:fixed;right:0;bottom:0;width:80mm;height:0;border:0;opacity:0;pointer-events:none';
-    document.body.appendChild(ifr);
-    const doc=ifr.contentWindow.document;
-    doc.open();
-    doc.write('<!doctype html><html><head><meta charset="utf-8"><style>'
-      +'@page{size:72mm auto;margin:0}'
-      +'html,body{margin:0;padding:0;background:#fff}'
-      +"body{color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px;width:72mm}"
-      +'.tk{padding:6px 4px 10px;page-break-after:always}'
-      +'.tk:last-child{page-break-after:auto}'
-      +'.tc{text-align:center}.tr{display:flex;justify-content:space-between}'
-      +'hr{border:none;border-top:1px dashed #000;margin:4px 0}'
-      +'.big{font-size:18px;font-weight:900}img{display:block}'
-      +'</style></head><body>'+inner+'</body></html>');
-    doc.close();
+function printNow(){
+  return new Promise(res=>{
     let done=false;
-    const go=()=>{ if(done) return; done=true;
-      try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){}
-      setTimeout(()=>{ try{ document.body.removeChild(ifr); }catch(e){} resolve(); }, 900);
-    };
-    const imgs=[...doc.querySelectorAll('img')];
-    if(!imgs.length){ setTimeout(go,40); }
-    else { let pend=imgs.length; const dec=()=>{ if(--pend<=0) setTimeout(go,60); };
-      imgs.forEach(im=>{ if(im.complete && im.naturalWidth) dec(); else { im.onload=dec; im.onerror=dec; } }); }
-    setTimeout(go, 1300); // fallback si la imagen no carga
+    const go=()=>{ if(done) return; done=true; window.print(); res(); };
+    const imgs=[...document.querySelectorAll('#ticket img')];
+    Promise.all(imgs.map(im=> (im.complete && im.naturalWidth) ? Promise.resolve()
+                                : new Promise(r=>{ im.onload=im.onerror=r; })))
+      .then(()=> setTimeout(go, 60));
+    setTimeout(go, 900); // fallback por si la imagen no dispara onload
   });
 }
 function printArea(){
@@ -1183,7 +1164,7 @@ async function procesarCola(jobs){
       _estDone.add(j.id);
       let perr=null;
       try{ await imprimirDesdePayload(j.payload); }catch(e){ perr=e; }
-      await sleepMs(400);
+      await sleepMs(700);
       const {error:uperr}=await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
       _estCount++;
       const lg=$('est-log'); if(lg){
