@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "6.2";  // ← subir este número con cada cambio
+const VERSION = "6.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1140,6 +1140,16 @@ function esImpresoraEsteDispositivo(){ try{ return localStorage.getItem('bs_prin
 function startPrinter(){ if(_estTimer) clearInterval(_estTimer); pollCola(); _estTimer=setInterval(pollCola,3000); }
 function stopPrinter(){ if(_estTimer){ clearInterval(_estTimer); _estTimer=null; } }
 
+function textPreviewJobs(jobs){
+  let t='';
+  (jobs||[]).forEach(j=>{
+    const p=j.payload||{};
+    const tks=p.tks||[];
+    if(tks.length){ tks.forEach(v=>{ t+='N° '+(v.numero!==undefined?v.numero:'?')+' · '+(v.nombre||'(sin nombre)')+' · '+money(v.precio||0)+'\n'; }); }
+    else { t+='[payload sin tks] '+JSON.stringify(p).slice(0,140)+'\n'; }
+  });
+  return t||'(cola vacía)';
+}
 function buildTicketsJobs(jobs){
   const hora=new Date().toLocaleString('es-AR');
   let html='';
@@ -1172,6 +1182,7 @@ async function pollCola(){
     _estJobs=data||[];
     if(_estJobs.length){ await cargarMarcaTicket(); $('ticket').innerHTML=buildTicketsJobs(_estJobs); _estPrepared=_estJobs.map(j=>j.id); }
     else { _estPrepared=[]; }
+    const pv=$('est-preview'); if(pv) pv.textContent=textPreviewJobs(_estJobs);
     renderEstacion();
   }catch(e){ const st=$('est-status'); if(st){ st.textContent='🔴 Sin conexión, reintentando…'; st.style.color='var(--danger)'; } }
 }
@@ -1222,6 +1233,10 @@ function admEstacion(){
       <div id="est-count" class="muted" style="font-size:.82rem;margin-top:.3rem">Impresos en esta sesión: ${_estCount}</div>
     </div>
     <button id="est-btn" class="btn btn-accent btn-block" style="font-size:1.35rem;padding:1.3rem;margin-bottom:1rem" onclick="estImprimirYa()" disabled>🖨️ Imprimir</button>
+    <div class="card" style="padding:.8rem;margin-bottom:1rem">
+      <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Vista previa (lo que va a salir)</div>
+      <div id="est-preview" style="background:#fff;color:#000;padding:10px;border-radius:8px;font-family:monospace;font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">—</div>
+    </div>
     <div class="card" style="padding:1rem;margin-bottom:1rem">
       <label style="display:flex;align-items:center;gap:.6rem;font-weight:600">
         <input type="checkbox" id="chk-impresora" ${on?'checked':''} onchange="toggleImpresoraPC()" style="width:auto;transform:scale(1.3)">
