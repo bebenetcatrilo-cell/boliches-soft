@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "6.3";  // ← subir este número con cada cambio
+const VERSION = "6.4";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1140,10 +1140,16 @@ function esImpresoraEsteDispositivo(){ try{ return localStorage.getItem('bs_prin
 function startPrinter(){ if(_estTimer) clearInterval(_estTimer); pollCola(); _estTimer=setInterval(pollCola,3000); }
 function stopPrinter(){ if(_estTimer){ clearInterval(_estTimer); _estTimer=null; } }
 
+function payloadObj(j){
+  let p=j&&j.payload;
+  if(typeof p==='string'){ try{ p=JSON.parse(p); }catch(e){ p={}; } }
+  if(typeof p==='string'){ try{ p=JSON.parse(p); }catch(e){ p={}; } } // por si quedó doble-escapado
+  return p||{};
+}
 function textPreviewJobs(jobs){
   let t='';
   (jobs||[]).forEach(j=>{
-    const p=j.payload||{};
+    const p=payloadObj(j);
     const tks=p.tks||[];
     if(tks.length){ tks.forEach(v=>{ t+='N° '+(v.numero!==undefined?v.numero:'?')+' · '+(v.nombre||'(sin nombre)')+' · '+money(v.precio||0)+'\n'; }); }
     else { t+='[payload sin tks] '+JSON.stringify(p).slice(0,140)+'\n'; }
@@ -1154,7 +1160,7 @@ function buildTicketsJobs(jobs){
   const hora=new Date().toLocaleString('es-AR');
   let html='';
   jobs.forEach(j=>{
-    const p=j.payload||{}; const barra=p.barra||(ST.boliche||'WIKEND'); const evento=p.evento||''; const tks=p.tks||[]; const totalUn=tks.length; let acum=0;
+    const p=payloadObj(j); const barra=p.barra||(ST.boliche||'WIKEND'); const evento=p.evento||''; const tks=p.tks||[]; const totalUn=tks.length; let acum=0;
     tks.forEach((v,idx)=>{
       acum+=Number(v.precio)||0;
       html+=`<div class="tk">
