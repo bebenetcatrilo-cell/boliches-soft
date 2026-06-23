@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.5";  // ← subir este número con cada cambio
+const VERSION = "5.6";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -798,14 +798,17 @@ function imprimirTicket(tks,forma){
     </div>`;
   });
   $('ticket').innerHTML=html;
-  printArea();
+  return printArea();
 }
 function printArea(){
-  const imgs=$('ticket').querySelectorAll('img');
-  if(!imgs.length){ window.print(); return; }
-  let pend=imgs.length;
-  const go2=()=>{ if(--pend<=0) setTimeout(()=>window.print(),60); };
-  imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
+  return new Promise(resolve=>{
+    const imgs=$('ticket').querySelectorAll('img');
+    const fire=()=>{ try{ window.print(); }catch(e){} setTimeout(resolve,350); };
+    if(!imgs.length){ fire(); return; }
+    let pend=imgs.length;
+    const go2=()=>{ if(--pend<=0) setTimeout(fire,60); };
+    imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
+  });
 }
 async function imprimirReporte(info,titulo,sub,sel){
   sel=sel||{total:1,entrabar:1,barras:1,vendedor:1,pago:1,cortesias:1,ranking:1,anulados:1};
@@ -1158,8 +1161,8 @@ async function procesarCola(jobs){
     for(const j of jobs){
       if(_estDone.has(j.id)) continue;        // ya impreso en esta sesión: no reintentar
       _estDone.add(j.id);
-      try{ imprimirDesdePayload(j.payload); }catch(e){}
-      await sleepMs(1200);
+      try{ await imprimirDesdePayload(j.payload); }catch(e){}
+      await sleepMs(500);
       const {error:uperr}=await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
       _estCount++;
       const lg=$('est-log'); if(lg){
@@ -1178,10 +1181,10 @@ async function procesarCola(jobs){
   renderEstacion();
 }
 function imprimirDesdePayload(p){
-  if(!p||!p.tks) return;
+  if(!p||!p.tks) return Promise.resolve();
   ST.barra={nombre:p.barra||(ST.boliche||'WIKEND')};
   ST.evento=p.evento||ST.evento||'';
-  imprimirTicket(p.tks,p.forma||'efectivo');
+  return imprimirTicket(p.tks,p.forma||'efectivo');
 }
 function renderEstacion(){
   const st=$('est-status'); if(!st) return;
