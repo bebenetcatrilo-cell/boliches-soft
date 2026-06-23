@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.4";  // ← subir este número con cada cambio
+const VERSION = "5.5";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1130,7 +1130,7 @@ function adminTab(t,btn){
 }
 
 /* ---------- ESTACIÓN DE IMPRESIÓN (patrón Tardecita: poller global + flag por máquina) ---------- */
-let _estTimer=null, _estBusy=false, _estCount=0, _estJobs=[];
+let _estTimer=null, _estBusy=false, _estCount=0, _estJobs=[], _estDone=new Set();
 function sleepMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function esImpresoraEsteDispositivo(){ try{ return localStorage.getItem('bs_printer')==='1'; }catch(e){ return false; } }
 function startPrinter(){
@@ -1156,16 +1156,19 @@ async function procesarCola(jobs){
   try{
     await cargarMarcaTicket();
     for(const j of jobs){
+      if(_estDone.has(j.id)) continue;        // ya impreso en esta sesión: no reintentar
+      _estDone.add(j.id);
       try{ imprimirDesdePayload(j.payload); }catch(e){}
       await sleepMs(1200);
-      await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
+      const {error:uperr}=await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
       _estCount++;
       const lg=$('est-log'); if(lg){
         const ph=lg.querySelector('.est-ph'); if(ph) lg.innerHTML='';
         const tk=(j.payload&&j.payload.tks&&j.payload.tks[0])||{};
         const d=document.createElement('div');
         d.style.cssText='padding:.35rem 0;border-bottom:1px solid var(--border)';
-        d.textContent='✓ N° '+(tk.numero||'—')+' · '+(tk.nombre||'')+' · '+new Date().toLocaleTimeString('es-AR');
+        if(uperr){ d.style.color='var(--danger)'; d.textContent='⚠️ N° '+(tk.numero||'—')+' · NO se pudo marcar impreso: '+(uperr.message||uperr.code||'error'); }
+        else { d.textContent='✓ N° '+(tk.numero||'—')+' · '+(tk.nombre||'')+' · '+new Date().toLocaleTimeString('es-AR'); }
         lg.prepend(d);
         while(lg.children.length>15) lg.removeChild(lg.lastChild);
       }
