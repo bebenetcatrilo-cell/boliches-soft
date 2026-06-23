@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "6.1";  // ← subir este número con cada cambio
+const VERSION = "6.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1148,9 +1148,7 @@ function buildTicketsJobs(jobs){
     tks.forEach((v,idx)=>{
       acum+=Number(v.precio)||0;
       html+=`<div class="tk">
-        ${ST.logo
-          ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
-          : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`}
+        <div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>
         ${evento?`<div class="tc">${evento}</div>`:''}
         <div class="tc">${barra}</div>
         <hr>
@@ -1179,8 +1177,9 @@ async function pollCola(){
 }
 
 function estImprimirYa(){
-  if(!_estPrepared.length){ pollCola(); return; }
-  const ids=_estPrepared.slice(), n=ids.length;
+  if(!_estJobs.length){ pollCola(); return; }
+  const jobs=_estJobs.slice(), ids=jobs.map(j=>j.id), n=ids.length;
+  $('ticket').innerHTML=buildTicketsJobs(jobs);   // arma el contenido en el momento (sin imagen, instantáneo)
   _estBusy=true; _estPrepared=[];
   window.print();   // SINCRÓNICO, dentro del toque -> Chrome deja imprimir
   setTimeout(async()=>{
