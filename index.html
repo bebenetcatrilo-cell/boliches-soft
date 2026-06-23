@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.6";  // ← subir este número con cada cambio
+const VERSION = "5.7";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -802,12 +802,22 @@ function imprimirTicket(tks,forma){
 }
 function printArea(){
   return new Promise(resolve=>{
+    let printed=false, finished=false;
+    const finish=()=>{ if(finished) return; finished=true; window.onafterprint=null; setTimeout(resolve,150); };
+    const fire=()=>{
+      if(printed) return; printed=true;
+      window.onafterprint=finish;
+      try{ window.print(); }catch(e){}
+      setTimeout(finish, 2000);            // si la impresora no avisa, seguimos igual
+    };
     const imgs=$('ticket').querySelectorAll('img');
-    const fire=()=>{ try{ window.print(); }catch(e){} setTimeout(resolve,350); };
-    if(!imgs.length){ fire(); return; }
-    let pend=imgs.length;
-    const go2=()=>{ if(--pend<=0) setTimeout(fire,60); };
-    imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go2(); else { im.onload=go2; im.onerror=go2; } });
+    if(!imgs.length){ setTimeout(fire,30); }
+    else {
+      let pend=imgs.length;
+      const go=()=>{ if(--pend<=0) setTimeout(fire,60); };
+      imgs.forEach(im=>{ if(im.complete && im.naturalWidth) go(); else { im.onload=go; im.onerror=go; } });
+    }
+    setTimeout(fire, 1000);                // fallback: imprimí aunque la imagen no cargue
   });
 }
 async function imprimirReporte(info,titulo,sub,sel){
@@ -1162,7 +1172,7 @@ async function procesarCola(jobs){
       if(_estDone.has(j.id)) continue;        // ya impreso en esta sesión: no reintentar
       _estDone.add(j.id);
       try{ await imprimirDesdePayload(j.payload); }catch(e){}
-      await sleepMs(500);
+      await sleepMs(400);
       const {error:uperr}=await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
       _estCount++;
       const lg=$('est-log'); if(lg){
