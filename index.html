@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.3";  // ← subir este número con cada cambio
+const VERSION = "5.4";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1143,7 +1143,7 @@ function stopPrinter(){ if(_estTimer){ clearInterval(_estTimer); _estTimer=null;
 async function pollCola(){
   if(_estBusy) return;
   try{
-    const {data,error}=await sb.from('impresiones').select('*').eq('estado','pendiente').order('created_at',{ascending:true});
+    const {data,error}=await sb.from('impresiones').select('*').in('estado',['pendiente','imprimiendo']).order('created_at',{ascending:true});
     if(error) throw error;
     _estJobs=data||[];
     renderEstacion();
@@ -1156,11 +1156,6 @@ async function procesarCola(jobs){
   try{
     await cargarMarcaTicket();
     for(const j of jobs){
-      // blindaje: tomar el trabajo solo si sigue pendiente
-      const {data:upd}=await sb.from('impresiones')
-        .update({estado:'imprimiendo',tomada_at:new Date().toISOString()})
-        .eq('id',j.id).eq('estado','pendiente').select();
-      if(!upd||!upd.length) continue;
       try{ imprimirDesdePayload(j.payload); }catch(e){}
       await sleepMs(1200);
       await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
