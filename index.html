@@ -379,7 +379,7 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "5.7";  // ← subir este número con cada cambio
+const VERSION = "5.9";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -764,16 +764,11 @@ async function confirmarVenta(forma){
   await cargarMarcaTicket();
   closeModal();
   const vales = tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio}));
-  if(ST.estacion){
-    try{
-      await sb.from('impresiones').insert({tipo:'ticket',estado:'pendiente',
-        payload:{tks:vales,forma,barra:ST.barra?ST.barra.nombre:'',evento:ST.evento||''}});
-      toast(esCortesia?'Cortesía enviada a impresión':'Ticket enviado a impresión','ok');
-    }catch(e){ toast('No se pudo enviar a la estación','err'); }
-  } else {
-    imprimirTicket(vales,forma);
+  try{
+    await sb.from('impresiones').insert({tipo:'ticket',estado:'pendiente',
+      payload:{tks:vales,forma,barra:ST.barra?ST.barra.nombre:'',evento:ST.evento||''}});
     toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
-  }
+  }catch(e){ toast('Venta OK, pero falló el envío a impresión','err'); }
   ST.cart=[]; ST.cartSel=null; renderCart(); $('cart').classList.remove('open'); clearSearch();
 }
 function imprimirTicket(tks,forma){
@@ -797,8 +792,38 @@ function imprimirTicket(tks,forma){
       <div class="tc" style="font-size:10px">${hora}</div>
     </div>`;
   });
-  $('ticket').innerHTML=html;
-  return printArea();
+  return printTicketHTML(html);
+}
+function printTicketHTML(inner){
+  return new Promise(resolve=>{
+    const ifr=document.createElement('iframe');
+    ifr.setAttribute('aria-hidden','true');
+    ifr.style.cssText='position:fixed;right:0;bottom:0;width:80mm;height:0;border:0;opacity:0;pointer-events:none';
+    document.body.appendChild(ifr);
+    const doc=ifr.contentWindow.document;
+    doc.open();
+    doc.write('<!doctype html><html><head><meta charset="utf-8"><style>'
+      +'@page{size:72mm auto;margin:0}'
+      +'html,body{margin:0;padding:0;background:#fff}'
+      +"body{color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px;width:72mm}"
+      +'.tk{padding:6px 4px 10px;page-break-after:always}'
+      +'.tk:last-child{page-break-after:auto}'
+      +'.tc{text-align:center}.tr{display:flex;justify-content:space-between}'
+      +'hr{border:none;border-top:1px dashed #000;margin:4px 0}'
+      +'.big{font-size:18px;font-weight:900}img{display:block}'
+      +'</style></head><body>'+inner+'</body></html>');
+    doc.close();
+    let done=false;
+    const go=()=>{ if(done) return; done=true;
+      try{ ifr.contentWindow.focus(); ifr.contentWindow.print(); }catch(e){}
+      setTimeout(()=>{ try{ document.body.removeChild(ifr); }catch(e){} resolve(); }, 900);
+    };
+    const imgs=[...doc.querySelectorAll('img')];
+    if(!imgs.length){ setTimeout(go,40); }
+    else { let pend=imgs.length; const dec=()=>{ if(--pend<=0) setTimeout(go,60); };
+      imgs.forEach(im=>{ if(im.complete && im.naturalWidth) dec(); else { im.onload=dec; im.onerror=dec; } }); }
+    setTimeout(go, 1300); // fallback si la imagen no carga
+  });
 }
 function printArea(){
   return new Promise(resolve=>{
@@ -948,7 +973,6 @@ async function admCajas(){
   const evento=cmap.evento_actual||'';
   const logo=cmap.logo||'';
   const pincort=cmap.pin_cortesia||'';
-  const estacion=(cmap.estacion_impresion==='1');
   ST.listaNombres={1:cmap.lista1_nombre||'Lista 1',2:cmap.lista2_nombre||'Lista 2',3:cmap.lista3_nombre||'Lista 3'};
   const ln=ST.listaNombres;
   const bmap={}; (barras||[]).forEach(b=>bmap[b.id]=b);
@@ -986,13 +1010,6 @@ async function admCajas(){
       </div>
       <div class="field" style="margin-top:1rem"><label>PIN de cortesías (puerta)</label><input id="cfg-pincort" value="${pincort}" placeholder="ej. 9999" inputmode="numeric"></div>
       <button class="btn btn-accent btn-block" onclick="guardarPinCort()">Guardar PIN cortesías</button>
-      <div style="margin-top:1.1rem;border-top:1px solid var(--border);padding-top:.9rem">
-        <label style="display:flex;align-items:center;gap:.6rem;font-size:.95rem;font-weight:600">
-          <input type="checkbox" id="cfg-estacion" ${estacion?'checked':''} onchange="guardarEstacion()" style="width:auto;transform:scale(1.3)">
-          🖨️ Estación de impresión
-        </label>
-        <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.4rem 0 0">Si está activa, los celulares/terminales <b>no imprimen</b>: mandan el ticket a la cola y lo imprime la PC que tengas abierta en 🖨️ Estación. Si está apagada, cada equipo imprime en su propia impresora.</p>
-      </div>
     </div>
     <button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="admAbrirModal()">+ Abrir caja</button>
     <div class="sec-title">🍺 Cajas de barra</div>
@@ -1057,13 +1074,6 @@ async function guardarPinCort(){
   const {error}=await sb.from('config').upsert({clave:'pin_cortesia',valor:v},{onConflict:'clave'});
   if(error){ toast('No se pudo guardar','err'); return; }
   toast(v?'PIN de cortesías guardado':'PIN de cortesías borrado','ok');
-}
-async function guardarEstacion(){
-  const on=$('cfg-estacion').checked;
-  const {error}=await sb.from('config').upsert({clave:'estacion_impresion',valor:on?'1':'0'},{onConflict:'clave'});
-  if(error){ toast('No se pudo guardar','err'); $('cfg-estacion').checked=!on; return; }
-  ST.estacion=on;
-  toast(on?'Estación de impresión activada':'Estación desactivada (cada equipo imprime)','ok');
 }
 async function admAbrirModal(){
   const noche=await getNocheAbierta();
@@ -1171,7 +1181,8 @@ async function procesarCola(jobs){
     for(const j of jobs){
       if(_estDone.has(j.id)) continue;        // ya impreso en esta sesión: no reintentar
       _estDone.add(j.id);
-      try{ await imprimirDesdePayload(j.payload); }catch(e){}
+      let perr=null;
+      try{ await imprimirDesdePayload(j.payload); }catch(e){ perr=e; }
       await sleepMs(400);
       const {error:uperr}=await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id);
       _estCount++;
@@ -1180,7 +1191,8 @@ async function procesarCola(jobs){
         const tk=(j.payload&&j.payload.tks&&j.payload.tks[0])||{};
         const d=document.createElement('div');
         d.style.cssText='padding:.35rem 0;border-bottom:1px solid var(--border)';
-        if(uperr){ d.style.color='var(--danger)'; d.textContent='⚠️ N° '+(tk.numero||'—')+' · NO se pudo marcar impreso: '+(uperr.message||uperr.code||'error'); }
+        if(perr){ d.style.color='var(--danger)'; d.textContent='⚠️ Error al imprimir: '+(perr.message||perr); }
+        else if(uperr){ d.style.color='var(--danger)'; d.textContent='⚠️ N° '+(tk.numero||'—')+' · NO se pudo marcar impreso: '+(uperr.message||uperr.code||'error'); }
         else { d.textContent='✓ N° '+(tk.numero||'—')+' · '+(tk.nombre||'')+' · '+new Date().toLocaleTimeString('es-AR'); }
         lg.prepend(d);
         while(lg.children.length>15) lg.removeChild(lg.lastChild);
