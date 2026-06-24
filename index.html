@@ -194,6 +194,27 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 .drawer-item.danger{color:var(--danger)}
 .drawer-sec{font-size:.7rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;padding:1rem .7rem .3rem}
 
+/* escaneo QR */
+.pos-tabs{display:flex;gap:.4rem;padding:.5rem .8rem;background:var(--surface);border-bottom:1px solid var(--border)}
+.postab{flex:1;padding:.7rem;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-weight:700;font-size:.95rem;color:var(--muted)}
+.postab.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.scan-panel{flex:1;display:flex;flex-direction:column;padding:1rem;overflow-y:auto;gap:.2rem}
+.scan-lbl,.scan-log-ttl{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:.35rem;display:block}
+.scan-evento{margin-bottom:.9rem}
+#scan-event-sel{width:100%;padding:.85rem;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:1rem;font-weight:600}
+.scan-input-row{display:flex;gap:.5rem;margin-bottom:.7rem}
+#scan-input{flex:1;padding:.95rem;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);font-size:1.1rem;font-weight:600}
+.scan-result{min-height:96px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:1rem;margin-bottom:.8rem;font-weight:700;background:var(--surface-2);border:1px solid var(--border);transition:all .15s}
+.scan-result.ok{background:rgba(20,224,200,.12);border-color:var(--cash);color:var(--cash)}
+.scan-result.err{background:rgba(255,70,90,.12);border-color:var(--danger);color:var(--danger)}
+.scan-result .big{font-size:1.6rem;line-height:1.1;margin-bottom:.25rem}
+.scan-result .sub2{font-size:.95rem;opacity:.9;color:var(--text)}
+.scan-contador{font-size:.85rem;color:var(--muted);margin-bottom:.9rem;text-align:center}
+.scan-log-ttl{margin-top:.3rem}
+.scan-log{font-size:.85rem}
+.scan-log .row{padding:.4rem 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:.5rem}
+#scan-cam-box video,#scan-cam-box canvas{width:100%!important;border-radius:12px}
+
 /* toast */
 .toast{position:fixed;left:50%;bottom:1.5rem;transform:translateX(-50%) translateY(12px);opacity:0;visibility:hidden;pointer-events:none;
   background:var(--surface-2);border:1px solid var(--border);border-radius:99px;padding:.75rem 1.3rem;
@@ -321,12 +342,32 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
     <div class="spacer"></div>
     <button class="menu-btn" onclick="openDrawer()">☰</button>
   </div>
+  <div class="pos-tabs" id="pos-tabs" style="display:none">
+    <button class="postab active" id="tab-vender" onclick="setScanMode(false)">🎟️ Vender</button>
+    <button class="postab" id="tab-scan" onclick="setScanMode(true)">📷 Escanear QR</button>
+  </div>
   <div class="pos-body">
     <div class="pos-products">
       <div class="search-bar"><input id="prod-search" placeholder="Buscar producto y tocá el que querés…" autocomplete="off" inputmode="search"></div>
       <div class="cats" id="cats"></div>
       <div class="prod-grid" id="prod-grid"><div class="spin"></div></div>
       <div class="search-results" id="search-results" style="display:none"></div>
+    </div>
+    <div class="scan-panel" id="scan-panel" style="display:none">
+      <div class="scan-evento">
+        <label class="scan-lbl">Evento de Pase</label>
+        <select id="scan-event-sel" onchange="elegirPaseEvento(this.value)"><option value="">Cargando eventos…</option></select>
+      </div>
+      <div class="scan-input-row">
+        <input id="scan-input" placeholder="Escaneá el QR (o pegá el código)…" autocomplete="off" autocapitalize="off" spellcheck="false" onkeydown="if(event.key==='Enter'){event.preventDefault();scanDesdeInput();}">
+        <button class="btn btn-accent" onclick="scanDesdeInput()">Validar</button>
+      </div>
+      <button class="btn btn-soft btn-block" id="scan-cam-btn" onclick="toggleCamara()" style="margin-bottom:.7rem">📷 Escanear con cámara</button>
+      <div id="scan-cam-box" style="display:none;margin-bottom:.7rem"></div>
+      <div class="scan-result" id="scan-result"></div>
+      <div class="scan-contador" id="scan-contador">Ingresos en esta sesión: 0</div>
+      <div class="scan-log-ttl">Últimos ingresos</div>
+      <div class="scan-log" id="scan-log"><div class="muted" style="padding:.4rem 0">— todavía nada —</div></div>
     </div>
     <div class="cart" id="cart">
       <div class="cart-handle" onclick="toggleCart()">
@@ -386,7 +427,12 @@ const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFz
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-const VERSION = "6.8";  // ← subir este número con cada cambio
+// --- Pase (plataforma de QR): solo lectura de eventos + RPC marcar_ingreso ---
+const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
+const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
+const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
+
+const VERSION = "6.9";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -403,7 +449,7 @@ let searchMatches=[], searchSel=0;
 const $ = id => document.getElementById(id);
 const money = n => '$'+Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:0});
 const barColor = b => BAR_COLORS[(b.orden||b.id||0) % BAR_COLORS.length];
-function go(s){ document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active')); $('scr-'+s).classList.add('active'); }
+function go(s){ if(s!=='pos'){ try{stopCamara();}catch(e){} } document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active')); $('scr-'+s).classList.add('active'); }
 function toast(msg,type){ const t=$('toast'); t.textContent=msg; t.className='toast show '+(type||''); setTimeout(()=>t.className='toast',2200); }
 function modal(html){ $('modal').innerHTML=html; $('modal-bg').classList.add('active'); }
 function closeModal(){ $('modal-bg').classList.remove('active'); }
@@ -540,8 +586,13 @@ async function enterPOS(){
   if(ST.esPuerta){
     if(sb_) sb_.style.display='none';
     $('search-results').style.display='none'; $('cats').style.display=''; $('prod-grid').style.display='';
+    $('pos-tabs').style.display='flex';
+    setScanMode(false);
     await cargarEntradasPuerta();
+    loadPaseEventos();
   } else {
+    $('pos-tabs').style.display='none';
+    setScanMode(false);
     const ab=$('aforo-banner'); if(ab) ab.style.display='none';
     if(sb_) sb_.style.display='';
     $('prod-search').value=''; onSearch();
@@ -576,6 +627,209 @@ async function cargarEntradasPuerta(){
   });
   ST.cats=['Entradas']; ST.catActiva='Entradas';
   renderCats(); renderProds();
+}
+
+/* ============ ESCANEO QR (integración Pase) ============ */
+function setScanMode(on){
+  ST.scanMode=!!on;
+  const prods=$('scr-pos').querySelector('.pos-products');
+  const cart=$('cart'); const panel=$('scan-panel');
+  const tv=$('tab-vender'), ts=$('tab-scan');
+  if(tv) tv.classList.toggle('active',!on);
+  if(ts) ts.classList.toggle('active',on);
+  if(on){
+    if(prods) prods.style.display='none';
+    if(cart) cart.style.display='none';
+    if(panel) panel.style.display='flex';
+    setScanResult('','');
+    setTimeout(()=>{ const i=$('scan-input'); if(i) i.focus(); },120);
+  } else {
+    stopCamara();
+    if(panel) panel.style.display='none';
+    if(prods) prods.style.display='';
+    if(cart) cart.style.display='';
+  }
+}
+
+async function loadPaseEventos(){
+  const sel=$('scan-event-sel'); if(!sel) return;
+  sel.innerHTML='<option value="">Cargando eventos…</option>';
+  let elegido='';
+  try{
+    const {data}=await sb.from('config').select('clave,valor').in('clave',['pase_event_id','pase_event_nombre']);
+    (data||[]).forEach(r=>{ if(r.clave==='pase_event_id') elegido=r.valor||''; if(r.clave==='pase_event_nombre') ST.paseEventoNombre=r.valor||''; });
+  }catch(e){}
+  let evs=[];
+  try{
+    const desde=new Date(); desde.setHours(0,0,0,0);
+    const {data,error}=await sbPase.from('events')
+      .select('id,name,date_start,venue,status')
+      .gte('date_start', desde.toISOString())
+      .order('date_start',{ascending:true});
+    if(error) throw error;
+    evs=data||[];
+  }catch(e){
+    sel.innerHTML='<option value="">⚠️ No se pudieron cargar los eventos de Pase</option>';
+    return;
+  }
+  if(!evs.length){ sel.innerHTML='<option value="">No hay eventos próximos en Pase</option>'; return; }
+  sel.innerHTML='<option value="">— Elegí el evento —</option>'+evs.map(e=>{
+    const f=e.date_start?new Date(e.date_start).toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'}):'';
+    return `<option value="${e.id}" ${e.id===elegido?'selected':''}>${f} · ${(e.name||'(sin nombre)')}</option>`;
+  }).join('');
+  ST.paseEvento=elegido||'';
+}
+
+async function elegirPaseEvento(id){
+  ST.paseEvento=id;
+  const sel=$('scan-event-sel');
+  const txt=(sel&&sel.selectedOptions[0])?sel.selectedOptions[0].textContent:'';
+  ST.paseEventoNombre=txt.replace(/^\d{2}\/\d{2} · /,'');
+  try{
+    await sb.from('config').upsert([
+      {clave:'pase_event_id',valor:id||''},
+      {clave:'pase_event_nombre',valor:ST.paseEventoNombre||''}
+    ]);
+  }catch(e){}
+  setScanResult('','');
+}
+
+function setScanResult(cls,html){
+  const r=$('scan-result'); if(!r) return;
+  r.className='scan-result'+(cls?(' '+cls):'');
+  r.innerHTML=html||'<span class="muted" style="font-weight:500">Escaneá un QR para validar el ingreso</span>';
+}
+
+function extraerCodigoQR(raw){
+  if(!raw) return '';
+  raw=String(raw).trim();
+  const m=raw.match(/[?&]qr=([^&\s]+)/i);
+  if(m) return decodeURIComponent(m[1]).trim();
+  return raw;
+}
+
+function scanDesdeInput(){
+  const i=$('scan-input'); if(!i) return;
+  const raw=i.value; i.value='';
+  if(raw.trim()) procesarScan(raw);
+  i.focus();
+}
+
+async function procesarScan(raw){
+  const code=extraerCodigoQR(raw);
+  if(!code) return;
+  const now=Date.now();
+  if(code===ST._lastScan && now-(ST._lastScanT||0)<3500) return;  // evita re-leer el mismo QR (cámara)
+  ST._lastScan=code; ST._lastScanT=now;
+  if(ST._scanBusy) return;
+  if(!ST.paseEvento){ setScanResult('err','<div class="big">Elegí el evento</div><div class="sub2">Seleccioná el evento de Pase arriba</div>'); return; }
+  ST._scanBusy=true;
+  setScanResult('','<div class="big">⏳</div><div class="sub2">Validando…</div>');
+  try{
+    const {data,error}=await sbPase.rpc('marcar_ingreso',{p_qr:code, p_event_id:ST.paseEvento});
+    if(error) throw error;
+    const res=data||{};
+    if(res.ok){
+      setScanResult('ok','<div class="big">✅ INGRESO OK</div><div class="sub2">'+(res.tipo||'Entrada')+'</div>');
+      beep(true);
+      await registrarIngresoBoliches(res, code);
+      await imprimirEntradaQR(res, code);
+      ST.scanCount=(ST.scanCount||0)+1;
+      const c=$('scan-contador'); if(c) c.textContent='Ingresos en esta sesión: '+ST.scanCount;
+      logIngreso(res.tipo||'Entrada', true);
+    } else {
+      let extra='';
+      if(res.estado==='usado' && res.used_at){ extra='<div class="sub2">Usado: '+new Date(res.used_at).toLocaleString('es-AR')+'</div>'; }
+      setScanResult('err','<div class="big">⛔ '+(res.msg||'No válido')+'</div>'+extra);
+      beep(false);
+      logIngreso(res.msg||'No válido', false);
+    }
+  }catch(e){
+    setScanResult('err','<div class="big">Error de conexión</div><div class="sub2">Probá de nuevo</div>');
+  } finally { ST._scanBusy=false; }
+}
+
+async function registrarIngresoBoliches(res, code){
+  try{
+    const noche=await getNocheAbierta();
+    await sb.from('ingresos_qr').insert({
+      noche_id: noche?noche.id:null,
+      caja_id: ST.caja?ST.caja.id:null,
+      qr_code: code,
+      event_id: ST.paseEvento||null,
+      tipo: res.tipo||'Entrada',
+      cajero: ST.cajero?ST.cajero.nombre:null
+    });
+  }catch(e){ /* índice único: si ya estaba registrado, lo ignora */ }
+}
+
+async function imprimirEntradaQR(res, code){
+  try{
+    await sb.from('impresiones').insert({tipo:'ticket', estado:'pendiente', payload:{
+      kind:'entrada_qr',
+      evento: ST.paseEventoNombre||ST.evento||'',
+      tks:[{numero:code, nombre:res.tipo||'Entrada', precio:0}]
+    }});
+  }catch(e){}
+}
+
+function logIngreso(txt, ok){
+  const lg=$('scan-log'); if(!lg) return;
+  const ph=lg.querySelector('.muted'); if(ph && lg.children.length===1) lg.innerHTML='';
+  const d=document.createElement('div'); d.className='row';
+  d.innerHTML='<span>'+(ok?'✅':'⛔')+' '+txt+'</span><span class="muted">'+new Date().toLocaleTimeString('es-AR')+'</span>';
+  lg.prepend(d); while(lg.children.length>20) lg.removeChild(lg.lastChild);
+}
+
+function beep(ok){
+  try{
+    const ctx=new (window.AudioContext||window.webkitAudioContext)();
+    const o=ctx.createOscillator(), g=ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine'; o.frequency.value=ok?880:180;
+    g.gain.value=0.12; o.start();
+    setTimeout(()=>{ try{o.stop(); ctx.close();}catch(e){} }, ok?120:320);
+  }catch(e){}
+}
+
+/* --- Cámara (html5-qrcode, se baja solo cuando hace falta) --- */
+function loadQrLib(){
+  return new Promise((res,rej)=>{
+    if(window.Html5Qrcode) return res();
+    const s=document.createElement('script');
+    s.src='https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
+    s.onload=()=>res(); s.onerror=()=>rej(new Error('cam lib'));
+    document.head.appendChild(s);
+  });
+}
+async function toggleCamara(){
+  if(ST._camActive){ stopCamara(); return; }
+  const box=$('scan-cam-box'); const btn=$('scan-cam-btn');
+  try{
+    await loadQrLib();
+    box.style.display='block'; box.innerHTML='<div id="qr-reader"></div>';
+    btn.textContent='✖ Cerrar cámara';
+    ST._cam=new Html5Qrcode('qr-reader');
+    ST._camActive=true;
+    await ST._cam.start({facingMode:'environment'}, {fps:10, qrbox:{width:220,height:220}},
+      (txt)=>{ procesarScan(txt); },
+      ()=>{}
+    );
+  }catch(e){
+    btn.textContent='📷 Escanear con cámara';
+    box.style.display='none';
+    setScanResult('err','<div class="big">No se pudo abrir la cámara</div><div class="sub2">Usá el lector USB o revisá los permisos</div>');
+    ST._camActive=false;
+  }
+}
+function stopCamara(){
+  const box=$('scan-cam-box'); const btn=$('scan-cam-btn');
+  if(btn) btn.textContent='📷 Escanear con cámara';
+  if(ST._cam && ST._camActive){
+    try{ ST._cam.stop().then(()=>{ try{ST._cam.clear();}catch(e){} }).catch(()=>{}); }catch(e){}
+  }
+  ST._camActive=false;
+  if(box){ box.style.display='none'; box.innerHTML=''; }
 }
 async function cargarMarcaTicket(){
   try{
@@ -1168,14 +1422,30 @@ function textPreviewJobs(jobs){
 function buildTicketsJobs(jobs){
   const hora=new Date().toLocaleString('es-AR');
   let html='';
+  const cab=()=> ST.logo
+      ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
+      : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`;
   jobs.forEach(j=>{
     const p=payloadObj(j); const barra=p.barra||(ST.boliche||'WIKEND'); const evento=p.evento||''; const tks=p.tks||[]; const totalUn=tks.length; let acum=0;
+    // --- Ticket de ENTRADA por QR (Pase): sin precio ---
+    if(p.kind==='entrada_qr'){
+      const v=tks[0]||{};
+      html+=`<div class="tk">
+        ${cab()}
+        ${evento?`<div class="tc">${evento}</div>`:''}
+        <hr>
+        <div class="tc big">ENTRADA</div>
+        <div class="tc big">${v.nombre||''}</div>
+        <hr>
+        <div class="tc" style="font-size:10px">${v.numero||''}</div>
+        <div class="tc" style="font-size:10px">${hora}</div>
+      </div>`;
+      return;
+    }
     tks.forEach((v,idx)=>{
       acum+=Number(v.precio)||0;
       html+=`<div class="tk">
-        ${ST.logo
-          ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
-          : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`}
+        ${cab()}
         ${evento?`<div class="tc">${evento}</div>`:''}
         <div class="tc">${barra}</div>
         <hr>
@@ -1465,6 +1735,10 @@ function renderReporte(info,cab,printMeta){
       <div class="kpi"><div class="k">Total ventas</div><div class="v num" style="color:var(--cash)">${money(total)}</div></div>
       <div class="kpi"><div class="k">👥 Personas (entradas)</div><div class="v num">${info.gente}</div></div>
     </div>
+    ${info.ingresosQR!=null?`<div class="kpi-row">
+      <div class="kpi"><div class="k">📷 Ingresos por QR (Pase)</div><div class="v num" style="color:var(--accent-2)">${info.ingresosQR}</div></div>
+      <div class="kpi"></div>
+    </div>`:''}
     <div class="kpi-row">
       <div class="kpi"><div class="k">🎫 Invitaciones ($0)</div><div class="v num">${info.invitaciones}</div></div>
       <div class="kpi"><div class="k">🎁 Cortesías consumo</div><div class="v num">${info.cortesias}</div></div>
@@ -1507,7 +1781,9 @@ async function repNoche(){
     cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div class="muted" style="font-size:.85rem">No hay una noche registrada en esa fecha.</div></div>`;
   }
   const evN=(noche&&noche.eventos)?noche.eventos.nombre:'Sin evento';
-  renderReporte(procesarTickets(tks),cab,{titulo:'Noche del '+fecha, sub:evN});
+  const info=procesarTickets(tks);
+  if(noche){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',noche.id); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
+  renderReporte(info,cab,{titulo:'Noche del '+fecha, sub:evN});
 }
 async function repEvento(){
   const ev=$('rep-evento').value; if(!ev){ renderReporte(procesarTickets([]),''); return; }
@@ -1517,7 +1793,9 @@ async function repEvento(){
   const tks=await ticketsDeNoches(nocheIds);
   const evName=((ST._eventos||[]).find(e=>String(e.id)===String(ev))||{}).nombre||'';
   const cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div style="font-size:.8rem;color:var(--muted)">Evento</div><div style="font-weight:600;margin-top:.2rem">🎫 ${evName}</div><div class="muted" style="font-size:.8rem;margin-top:.2rem">${nocheIds.length} noche(s) registrada(s)</div></div>`;
-  renderReporte(procesarTickets(tks),cab,{titulo:'Evento: '+evName, sub:nocheIds.length+' noche(s)'});
+  const info=procesarTickets(tks);
+  if(nocheIds.length){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).in('noche_id',nocheIds); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
+  renderReporte(info,cab,{titulo:'Evento: '+evName, sub:nocheIds.length+' noche(s)'});
 }
 
 /* ---------- ADMIN · ANULAR TICKET ---------- */
