@@ -432,7 +432,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "7.1";  // ← subir este número con cada cambio
+const VERSION = "7.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -753,10 +753,10 @@ async function registrarIngresoBoliches(res, code){
   try{
     const noche=await getNocheAbierta();
     const fila={
-      noche_id: noche?noche.id:null,
-      caja_id: (ST.caja&&ST.caja.id)?ST.caja.id:null,
+      noche_id: noche&&noche.id!=null?String(noche.id):null,
+      caja_id: (ST.caja&&ST.caja.id!=null)?String(ST.caja.id):null,
       qr_code: code,
-      event_id: ST.paseEvento||null,
+      event_id: ST.paseEvento?String(ST.paseEvento):null,
       tipo: res.tipo||'Entrada',
       cajero: (ST.cajero&&ST.cajero.nombre)?ST.cajero.nombre:null
     };
@@ -1565,7 +1565,7 @@ async function admMonitoreo(){
   if(noche){
     const info=procesarTickets(await ticketsDeNoches([noche.id]));
     totalNoche=info.total; genteNoche=info.gente;
-    try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',noche.id); qrNoche=count||0; }catch(e){ qrNoche=0; }
+    try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',String(noche.id)); qrNoche=count||0; }catch(e){ qrNoche=0; }
   }
   const {data:cajas}=await sb.from('caja').select('*').eq('estado','abierta').order('barra_id');
   const headKpis=`
@@ -1793,7 +1793,7 @@ async function repNoche(){
   }
   const evN=(noche&&noche.eventos)?noche.eventos.nombre:'Sin evento';
   const info=procesarTickets(tks);
-  if(noche){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',noche.id); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
+  if(noche){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',String(noche.id)); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
   renderReporte(info,cab,{titulo:'Noche del '+fecha, sub:evN});
 }
 async function repEvento(){
@@ -1805,7 +1805,7 @@ async function repEvento(){
   const evName=((ST._eventos||[]).find(e=>String(e.id)===String(ev))||{}).nombre||'';
   const cab=`<div class="card" style="padding:.8rem 1rem;margin-bottom:1rem"><div style="font-size:.8rem;color:var(--muted)">Evento</div><div style="font-weight:600;margin-top:.2rem">🎫 ${evName}</div><div class="muted" style="font-size:.8rem;margin-top:.2rem">${nocheIds.length} noche(s) registrada(s)</div></div>`;
   const info=procesarTickets(tks);
-  if(nocheIds.length){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).in('noche_id',nocheIds); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
+  if(nocheIds.length){ try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).in('noche_id',nocheIds.map(String)); info.ingresosQR=count||0; }catch(e){ info.ingresosQR=0; } }
   renderReporte(info,cab,{titulo:'Evento: '+evName, sub:nocheIds.length+' noche(s)'});
 }
 
