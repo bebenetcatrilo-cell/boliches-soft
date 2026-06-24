@@ -432,7 +432,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "6.9";  // ← subir este número con cada cambio
+const VERSION = "7.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1555,16 +1555,21 @@ async function admMonitoreo(){
   const body=$('admin-body'); body.innerHTML='<div class="spin"></div>';
   const noche=await getNocheAbierta();
   // Total de TODA la noche, con la MISMA fuente que el reporte (así coinciden siempre)
-  let totalNoche=0, genteNoche=0;
+  let totalNoche=0, genteNoche=0, qrNoche=0;
   if(noche){
     const info=procesarTickets(await ticketsDeNoches([noche.id]));
     totalNoche=info.total; genteNoche=info.gente;
+    try{ const {count}=await sb.from('ingresos_qr').select('*',{count:'exact',head:true}).eq('noche_id',noche.id); qrNoche=count||0; }catch(e){ qrNoche=0; }
   }
   const {data:cajas}=await sb.from('caja').select('*').eq('estado','abierta').order('barra_id');
   const headKpis=`
     <div class="kpi-row">
       <div class="kpi"><div class="k">Facturado de la noche</div><div class="v num" style="color:var(--cash)">${money(totalNoche)}</div></div>
       <div class="kpi"><div class="k">👥 Personas ingresadas</div><div class="v num">${genteNoche}</div></div>
+    </div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="k">📷 Ingresos por QR (Pase)</div><div class="v num" style="color:var(--accent-2)">${qrNoche}</div></div>
+      <div class="kpi"></div>
     </div>`;
   if(!cajas||!cajas.length){ body.innerHTML=headKpis+'<div class="empty">No hay cajas abiertas en este momento.</div><button class="btn btn-block" style="margin-top:1rem" onclick="admMonitoreo()">↻ Actualizar</button>'; return; }
   const ids=cajas.map(c=>c.id);
