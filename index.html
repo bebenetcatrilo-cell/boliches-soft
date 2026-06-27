@@ -432,7 +432,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "7.2";  // ← subir este número con cada cambio
+const VERSION = "7.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -730,7 +730,9 @@ async function procesarScan(raw){
     if(error) throw error;
     const res=data||{};
     if(res.ok){
-      setScanResult('ok','<div class="big">✅ INGRESO OK</div><div class="sub2">'+(res.tipo||'Entrada')+'</div>');
+      const tipoTxt=res.tipo||'Entrada';
+      const conConsum=/consum/i.test(tipoTxt);
+      setScanResult('ok','<div class="big">✅ INGRESO OK</div><div class="sub2">'+tipoTxt+'</div>'+(conConsum?'<div class="sub2" style="margin-top:.3rem">🎟️ Entrada + 🥤 Consumición</div>':''));
       beep(true);
       await registrarIngresoBoliches(res, code);
       await imprimirEntradaQR(res, code);
@@ -770,13 +772,20 @@ async function registrarIngresoBoliches(res, code){
 }
 
 async function imprimirEntradaQR(res, code){
-  try{
-    await sb.from('impresiones').insert({tipo:'ticket', estado:'pendiente', payload:{
-      kind:'entrada_qr',
-      evento: ST.paseEventoNombre||ST.evento||'',
-      tks:[{numero:code, nombre:res.tipo||'Entrada', precio:0}]
+  const tipo=res.tipo||'Entrada';
+  const evento=ST.paseEventoNombre||ST.evento||'';
+  const filas=[];
+  // 1) Ticket de ENTRADA (siempre)
+  filas.push({tipo:'ticket', estado:'pendiente', payload:{
+    kind:'entrada_qr', evento, tks:[{numero:code, nombre:tipo, precio:0}]
+  }});
+  // 2) Ticket de CONSUMICIÓN (solo si el tipo lo incluye)
+  if(/consum/i.test(tipo)){
+    filas.push({tipo:'ticket', estado:'pendiente', payload:{
+      kind:'consumicion_qr', evento, tks:[{numero:code, nombre:tipo, precio:0}]
     }});
-  }catch(e){}
+  }
+  try{ await sb.from('impresiones').insert(filas); }catch(e){}
 }
 
 function logIngreso(txt, ok){
@@ -1443,6 +1452,24 @@ function buildTicketsJobs(jobs){
         <div class="tc big">ENTRADA</div>
         <div class="tc big">${v.nombre||''}</div>
         <hr>
+        <div class="tc" style="font-size:10px">${v.numero||''}</div>
+        <div class="tc" style="font-size:10px">${hora}</div>
+      </div>`;
+      return;
+    }
+    // --- Ticket de CONSUMICIÓN por QR (Pase) ---
+    if(p.kind==='consumicion_qr'){
+      const v=tks[0]||{};
+      const hoy=new Date().toLocaleDateString('es-AR');
+      html+=`<div class="tk">
+        ${cab()}
+        ${evento?`<div class="tc">${evento}</div>`:''}
+        <hr>
+        <div class="tc big">CONSUMICIÓN</div>
+        <div class="tc">${v.nombre||''}</div>
+        <hr>
+        <div class="tc" style="font-size:11px">Válido solo por hoy</div>
+        <div class="tc" style="font-size:11px">${hoy}</div>
         <div class="tc" style="font-size:10px">${v.numero||''}</div>
         <div class="tc" style="font-size:10px">${hora}</div>
       </div>`;
