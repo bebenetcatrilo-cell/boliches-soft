@@ -432,7 +432,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "7.3";  // ← subir este número con cada cambio
+const VERSION = "7.6";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -704,8 +704,11 @@ function extraerCodigoQR(raw){
   if(!raw) return '';
   raw=String(raw).trim();
   const m=raw.match(/[?&]qr=([^&\s]+)/i);
-  if(m) return decodeURIComponent(m[1]).trim();
-  return raw;
+  if(m) raw=decodeURIComponent(m[1]).trim();
+  // Algunas pistolas, según el idioma del teclado, escriben el guión como
+  // apóstrofo u otro símbolo. Normalizamos: TKT seguido de cualquier separador -> TKT-
+  raw=raw.replace(/^(TKT)['´`._/\\ ]+/i, 'TKT-');
+  return raw.trim();
 }
 
 function scanDesdeInput(){
@@ -774,18 +777,24 @@ async function registrarIngresoBoliches(res, code){
 async function imprimirEntradaQR(res, code){
   const tipo=res.tipo||'Entrada';
   const evento=ST.paseEventoNombre||ST.evento||'';
+  const est=normEstacion(ST.caja&&ST.caja.estacion_destino)||null;
   const filas=[];
   // 1) Ticket de ENTRADA (siempre)
-  filas.push({tipo:'ticket', estado:'pendiente', payload:{
+  filas.push({tipo:'ticket', estado:'pendiente', estacion:est, payload:{
     kind:'entrada_qr', evento, tks:[{numero:code, nombre:tipo, precio:0}]
   }});
   // 2) Ticket de CONSUMICIÓN (solo si el tipo lo incluye)
   if(/consum/i.test(tipo)){
-    filas.push({tipo:'ticket', estado:'pendiente', payload:{
+    filas.push({tipo:'ticket', estado:'pendiente', estacion:est, payload:{
       kind:'consumicion_qr', evento, tks:[{numero:code, nombre:tipo, precio:0}]
     }});
   }
-  try{ await sb.from('impresiones').insert(filas); }catch(e){}
+  try{
+    const {error}=await sb.from('impresiones').insert(filas);
+    if(error) throw error;
+  }catch(e){
+    logIngreso('⚠️ No se encoló impresión: '+((e&&(e.message||e.code))||'error'), false);
+  }
 }
 
 function logIngreso(txt, ok){
@@ -1044,6 +1053,7 @@ async function confirmarVenta(forma){
   const vales = tks.length?tks:ticketsRows.map(r=>({numero:'—',nombre:r.nombre,precio:r.precio}));
   try{
     await sb.from('impresiones').insert({tipo:'ticket',estado:'pendiente',
+      estacion: normEstacion(ST.caja&&ST.caja.estacion_destino)||null,
       payload:{tks:vales,forma,barra:ST.barra?ST.barra.nombre:'',evento:ST.evento||''}});
     toast(esCortesia?'Cortesía registrada':('Venta registrada · '+money(tot)),'ok');
   }catch(e){ toast('Venta OK, pero falló el envío a impresión','err'); }
@@ -1345,10 +1355,18 @@ async function admAbrirModal(){
   const usadas=new Set((abiertas||[]).map(c=>c.barra_id));
   const libres=(barras||[]).filter(b=>!usadas.has(b.id));
   if(!libres.length){ toast('Todos los sectores ya tienen una caja abierta','err'); return; }
+  // estaciones ya usadas antes, para autocompletar
+  let ests=[];
+  try{ const {data:ce}=await sb.from('caja').select('estacion_destino').not('estacion_destino','is',null);
+    ests=[...new Set((ce||[]).map(r=>normEstacion(r.estacion_destino)).filter(Boolean))]; }catch(e){}
+  const dlist=ests.map(e=>`<option value="${e}">`).join('');
   const opts=libres.map(b=>`<option value="${b.id}">${b.es_puerta?'🎟️ ':'🍺 '}${b.nombre}</option>`).join('');
   modal(`<h3>Abrir caja</h3>
     <div class="field"><label>Sector</label><select id="ac-barra">${opts}</select></div>
     <div class="field"><label>Fondo inicial (efectivo)</label><input id="ac-fondo" type="number" inputmode="decimal" placeholder="0" value="0"></div>
+    <div class="field"><label>Estación de impresión (a qué impresora salen los tickets)</label>
+      <input id="ac-estacion" list="ac-est-list" placeholder="ej: BARRA 1 (vacío = impresora general)" autocomplete="off">
+      <datalist id="ac-est-list">${dlist}</datalist></div>
     <button class="btn btn-cash btn-block" onclick="admDoAbrir()">Abrir caja</button>
     <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
 }
@@ -1356,6 +1374,7 @@ async function admDoAbrir(){
   const barra_id=parseInt($('ac-barra').value);
   const fondo=parseFloat($('ac-fondo').value)||0;
   const rec={barra_id,usuario_id:ST.admin&&ST.admin.id?ST.admin.id:null,monto_inicial:fondo,estado:'abierta'};
+  const est=normEstacion($('ac-estacion')?$('ac-estacion').value:''); if(est) rec.estacion_destino=est;
   if(ST._nocheId) rec.noche_id=ST._nocheId;
   const {error}=await sb.from('caja').insert(rec);
   if(error){ toast('No se pudo abrir (¿ya hay una caja abierta en ese sector?)','err'); return; }
@@ -1415,6 +1434,9 @@ function adminTab(t,btn){
 let _estTimer=null, _estBusy=false, _estCount=0, _estJobs=[], _estPrepared=[];
 function sleepMs(ms){ return new Promise(r=>setTimeout(r,ms)); }
 function esImpresoraEsteDispositivo(){ try{ return localStorage.getItem('bs_printer')==='1'; }catch(e){ return false; } }
+function normEstacion(s){ return (s||'').trim().toUpperCase(); }
+function miEstacion(){ try{ return normEstacion(localStorage.getItem('bs_estacion')||''); }catch(e){ return ''; } }
+function setMiEstacion(v){ try{ const n=normEstacion(v); if(n) localStorage.setItem('bs_estacion',n); else localStorage.removeItem('bs_estacion'); }catch(e){} }
 function startPrinter(){ if(_estTimer) clearInterval(_estTimer); pollCola(); _estTimer=setInterval(pollCola,3000); }
 function stopPrinter(){ if(_estTimer){ clearInterval(_estTimer); _estTimer=null; } }
 
@@ -1497,7 +1519,10 @@ function buildTicketsJobs(jobs){
 async function pollCola(){
   if(_estBusy) return;
   try{
-    const {data,error}=await sb.from('impresiones').select('*').eq('estado','pendiente').order('created_at',{ascending:true});
+    let q=sb.from('impresiones').select('*').eq('estado','pendiente');
+    const est=miEstacion();
+    if(est) q=q.eq('estacion',est);   // si esta PC tiene nombre de estación, solo imprime lo suyo
+    const {data,error}=await q.order('created_at',{ascending:true});
     if(error) throw error;
     _estJobs=data||[];
     _estPrepared=_estJobs.map(j=>j.id);
@@ -1540,10 +1565,11 @@ function estImprimirYa(){   // botón manual de respaldo: fuerza una pasada de l
 function renderEstacion(){
   const st=$('est-status'); if(!st) return;
   const on=esImpresoraEsteDispositivo(); const btn=$('est-btn'); const n=_estJobs.length;
+  const est=miEstacion(); const tag=est?(' · '+est):' · general';
   if(!on){ st.textContent='⚪ Esta compu NO está marcada como impresora'; st.style.color='var(--muted)'; if(btn){ btn.disabled=true; btn.style.opacity='.5'; } return; }
-  if(_estBusy){ st.textContent='🖨️ Imprimiendo…'; st.style.color='var(--accent)'; }
-  else if(n){ st.textContent='🟡 '+n+' en cola, imprimiendo solos…'; st.style.color='var(--accent-2)'; }
-  else { st.textContent='🟢 Listo · imprime solo cuando llega un ticket'; st.style.color='var(--cash)'; }
+  if(_estBusy){ st.textContent='🖨️ Imprimiendo…'+tag; st.style.color='var(--accent)'; }
+  else if(n){ st.textContent='🟡 '+n+' en cola, imprimiendo solos…'+tag; st.style.color='var(--accent-2)'; }
+  else { st.textContent='🟢 Listo'+tag+' · imprime solo cuando llega un ticket'; st.style.color='var(--cash)'; }
   if(btn){ btn.disabled=false; btn.style.opacity='1'; }
 }
 
@@ -1573,12 +1599,28 @@ function admEstacion(){
       </label>
       <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.5rem 0 0">Tildá esto <b>solo en la compu del mostrador</b> que tiene la impresora. Imprime <b>sola</b> cada ticket que llega de los celulares, sin tocar nada. Dejá esta ventana abierta (con el <b>.bat</b>). El botón de arriba es solo por si querés forzar una reimpresión.</p>
     </div>
+    <div class="card" style="padding:1rem;margin-bottom:1rem">
+      <label style="font-weight:600;display:block;margin-bottom:.4rem">📍 Nombre de esta estación</label>
+      <div style="display:flex;gap:.5rem">
+        <input id="est-nombre" value="${miEstacion()}" placeholder="ej: BARRA 1" autocomplete="off" style="flex:1;text-transform:uppercase">
+        <button class="btn btn-accent" onclick="guardarMiEstacion()">Guardar</button>
+      </div>
+      <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.5rem 0 0">Si tenés <b>varias impresoras</b>, ponele un nombre a cada PC (ej: "BARRA 1", "BARRA 2", "ENTRADA"). Esta PC va a imprimir <b>solo</b> los tickets de las cajas asignadas a esta estación. <b>Dejalo vacío</b> si esta es la única impresora (imprime todo).</p>
+    </div>
     <div class="card" style="padding:.8rem">
       <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Últimos impresos</div>
       <div id="est-log" style="font-size:.82rem"><div class="est-ph muted">Esperando tickets…</div></div>
     </div>`;
   renderEstacion();
   if(on) startPrinter();
+}
+function guardarMiEstacion(){
+  const v=$('est-nombre')?$('est-nombre').value:'';
+  setMiEstacion(v);
+  const n=miEstacion();
+  toast(n?('Esta estación: '+n):'Estación general (imprime todo)','ok');
+  if(esImpresoraEsteDispositivo()){ stopPrinter(); startPrinter(); }
+  renderEstacion();
 }
 function nightRange(dateStr){ // ventana 18:00 del día → 12:00 del siguiente
   const d=new Date(dateStr+'T18:00:00'); const e=new Date(d); e.setDate(e.getDate()+1); e.setHours(12,0,0,0);
