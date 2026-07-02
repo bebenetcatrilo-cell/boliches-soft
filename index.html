@@ -456,7 +456,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "7.9";  // ← subir este número con cada cambio
+const VERSION = "8.0";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1584,17 +1584,39 @@ function buildTicketsJobs(jobs){
 
 async function pollCola(){
   if(_estBusy) return;
+  _estBusy=true;
   try{
     let q=sb.from('impresiones').select('*').eq('estado','pendiente');
     const est=miEstacion();
-    if(est) q=q.eq('estacion',est);   // si esta PC tiene nombre de estación, solo imprime lo suyo
+    if(est) q=q.eq('estacion',est);   // si esta PC tiene nombre, sólo imprime lo suyo
     const {data,error}=await q.order('created_at',{ascending:true});
     if(error) throw error;
     _estJobs=data||[];
     _estPrepared=_estJobs.map(j=>j.id);
     renderEstacion();
-    if(_estJobs.length && esImpresoraEsteDispositivo()) await procesarColaAuto(_estJobs.slice());
+    if(_estJobs.length && esImpresoraEsteDispositivo()){
+      await cargarMarcaTicket();
+      for(const j of _estJobs){
+        // RESERVA ATÓMICA: sólo imprime quien logra pasar el ticket de pendiente->impreso.
+        // Si otro dispositivo/ciclo ya lo tomó, la actualización afecta 0 filas y NO se imprime.
+        // Esto hace imposible que un mismo ticket salga dos veces, aunque la impresora tarde.
+        let claimed=false;
+        try{
+          const {data:cl}=await sb.from('impresiones')
+            .update({estado:'impreso', impresa_at:new Date().toISOString()})
+            .eq('id', j.id).eq('estado','pendiente').select('id');
+          claimed = !!(cl && cl.length);
+        }catch(e){ claimed=false; }
+        if(!claimed) continue;
+        $('ticket').innerHTML=buildTicketsJobs([j]);
+        try{ await printNow(); }catch(e){}
+        await sleepMs(500);            // aire para impresoras lentas (Epson)
+        _estCount++; logImpreso(j);
+      }
+      const c=$('est-count'); if(c) c.textContent='Impresos en esta sesión: '+_estCount;
+    }
   }catch(e){ const st=$('est-status'); if(st){ st.textContent='🔴 Sin conexión, reintentando…'; st.style.color='var(--danger)'; } }
+  finally{ _estBusy=false; renderEstacion(); }
 }
 
 function logImpreso(j){
@@ -1606,22 +1628,8 @@ function logImpreso(j){
   lg.prepend(d); while(lg.children.length>15) lg.removeChild(lg.lastChild);
 }
 
-async function procesarColaAuto(jobs){
-  if(_estBusy) return;
-  _estBusy=true; renderEstacion();
-  try{
-    await cargarMarcaTicket();
-    for(const j of jobs){
-      $('ticket').innerHTML=buildTicketsJobs([j]);
-      try{ await printNow(); }catch(e){}          // espera el logo y dispara window.print()
-      await sleepMs(700);
-      try{ await sb.from('impresiones').update({estado:'impreso',impresa_at:new Date().toISOString()}).eq('id',j.id); }catch(e){}
-      _estCount++; logImpreso(j);
-    }
-  }finally{ _estBusy=false; }
-  const c=$('est-count'); if(c) c.textContent='Impresos en esta sesión: '+_estCount;
-  renderEstacion();
-}
+// La impresión de la cola ahora vive dentro de pollCola con reserva atómica anti-duplicados.
+async function procesarColaAuto(){ /* obsoleto: reemplazado por pollCola */ }
 
 function estImprimirYa(){   // botón manual de respaldo: fuerza una pasada de la cola
   if(_estBusy) return;
