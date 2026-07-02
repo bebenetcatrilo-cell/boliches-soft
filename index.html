@@ -456,7 +456,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.0";  // ← subir este número con cada cambio
+const VERSION = "8.1";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1523,63 +1523,46 @@ function textPreviewJobs(jobs){
   return t||'(cola vacía)';
 }
 function buildTicketsJobs(jobs){
+  // Compat: concatena todos (se sigue usando para vista/otros). La impresión real usa buildTicketsArray.
+  let html=''; jobs.forEach(j=>{ buildTicketsArray(j).forEach(h=> html+=h); }); return html;
+}
+// Devuelve un ARRAY con el HTML de CADA ticket por separado (para imprimir uno por trabajo).
+function buildTicketsArray(j){
   const hora=new Date().toLocaleString('es-AR');
-  let html='';
   const cab=()=> ST.logo
       ? `<div class="tc"><img src="${ST.logo}" style="display:block;max-width:34mm;max-height:11mm;margin:2px auto 4px;object-fit:contain"></div>`
       : `<div class="tc big">${(ST.boliche||'WIKEND').toUpperCase()}</div>`;
-  jobs.forEach(j=>{
-    const p=payloadObj(j); const barra=p.barra||(ST.boliche||'WIKEND'); const evento=p.evento||''; const tks=p.tks||[]; const totalUn=tks.length; let acum=0;
-    // --- Ticket de ENTRADA por QR (Pase): sin precio ---
-    if(p.kind==='entrada_qr'){
-      const v=tks[0]||{};
-      html+=`<div class="tk">
-        ${cab()}
-        ${evento?`<div class="tc">${evento}</div>`:''}
-        <hr>
-        <div class="tc big">ENTRADA</div>
-        <div class="tc big">${v.nombre||''}</div>
-        <hr>
-        <div class="tc" style="font-size:10px">${v.numero||''}</div>
-        <div class="tc" style="font-size:10px">${hora}</div>
-      </div>`;
-      return;
-    }
-    // --- Ticket de CONSUMICIÓN por QR (Pase) ---
-    if(p.kind==='consumicion_qr'){
-      const v=tks[0]||{};
-      const hoy=new Date().toLocaleDateString('es-AR');
-      html+=`<div class="tk">
-        ${cab()}
-        ${evento?`<div class="tc">${evento}</div>`:''}
-        <hr>
-        <div class="tc big">CONSUMICIÓN</div>
-        <div class="tc">${v.nombre||''}</div>
-        <hr>
-        <div class="tc" style="font-size:11px">Válido solo por hoy</div>
-        <div class="tc" style="font-size:11px">${hoy}</div>
-        <div class="tc" style="font-size:10px">${v.numero||''}</div>
-        <div class="tc" style="font-size:10px">${hora}</div>
-      </div>`;
-      return;
-    }
-    tks.forEach((v,idx)=>{
-      acum+=Number(v.precio)||0;
-      html+=`<div class="tk">
-        ${cab()}
-        ${evento?`<div class="tc">${evento}</div>`:''}
-        <div class="tc">${barra}</div>
-        <hr>
-        <div class="tc">N° ${v.numero} · ${idx+1}/${totalUn}</div>
-        <div class="tc big">${v.nombre}</div>
-        <div class="tc big">${money(v.precio)}</div>
-        <hr>
-        <div class="tr" style="font-size:10px"><span>Acumulado</span><span>${money(acum)}</span></div>
-        <div class="tc" style="font-size:10px">${hora}</div>
-      </div>`;
-    });
+  const p=payloadObj(j); const barra=p.barra||(ST.boliche||'WIKEND'); const evento=p.evento||''; const tks=p.tks||[]; const totalUn=tks.length; let acum=0;
+  const out=[];
+  if(p.kind==='entrada_qr'){
+    const v=tks[0]||{};
+    out.push(`<div class="tk">${cab()}${evento?`<div class="tc">${evento}</div>`:''}<hr>
+      <div class="tc big">ENTRADA</div><div class="tc big">${v.nombre||''}</div><hr>
+      <div class="tc" style="font-size:10px">${v.numero||''}</div>
+      <div class="tc" style="font-size:10px">${hora}</div></div>`);
+    return out;
+  }
+  if(p.kind==='consumicion_qr'){
+    const v=tks[0]||{}; const hoy=new Date().toLocaleDateString('es-AR');
+    out.push(`<div class="tk">${cab()}${evento?`<div class="tc">${evento}</div>`:''}<hr>
+      <div class="tc big">CONSUMICIÓN</div><div class="tc">${v.nombre||''}</div><hr>
+      <div class="tc" style="font-size:11px">Válido solo por hoy</div>
+      <div class="tc" style="font-size:11px">${hoy}</div>
+      <div class="tc" style="font-size:10px">${v.numero||''}</div>
+      <div class="tc" style="font-size:10px">${hora}</div></div>`);
+    return out;
+  }
+  tks.forEach((v,idx)=>{
+    acum+=Number(v.precio)||0;
+    out.push(`<div class="tk">${cab()}${evento?`<div class="tc">${evento}</div>`:''}
+      <div class="tc">${barra}</div><hr>
+      <div class="tc">N° ${v.numero} · ${idx+1}/${totalUn}</div>
+      <div class="tc big">${v.nombre}</div>
+      <div class="tc big">${money(v.precio)}</div><hr>
+      <div class="tr" style="font-size:10px"><span>Acumulado</span><span>${money(acum)}</span></div>
+      <div class="tc" style="font-size:10px">${hora}</div></div>`);
   });
-  return html;
+  return out;
 }
 
 async function pollCola(){
@@ -1608,9 +1591,14 @@ async function pollCola(){
           claimed = !!(cl && cl.length);
         }catch(e){ claimed=false; }
         if(!claimed) continue;
-        $('ticket').innerHTML=buildTicketsJobs([j]);
-        try{ await printNow(); }catch(e){}
-        await sleepMs(500);            // aire para impresoras lentas (Epson)
+        // Imprime CADA ticket del pedido como un trabajo separado:
+        // así no hay salto de página (papel en blanco) y la impresora corta entre cada uno.
+        const tickets=buildTicketsArray(j);
+        for(const tkHtml of tickets){
+          $('ticket').innerHTML=tkHtml;
+          try{ await printNow(); }catch(e){}
+          await sleepMs(450);          // aire para impresoras lentas (Epson)
+        }
         _estCount++; logImpreso(j);
       }
       const c=$('est-count'); if(c) c.textContent='Impresos en esta sesión: '+_estCount;
