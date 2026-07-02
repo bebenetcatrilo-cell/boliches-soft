@@ -456,7 +456,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.1";  // ← subir este número con cada cambio
+const VERSION = "8.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1152,11 +1152,13 @@ function imprimirTicket(tks,forma){
 function printNow(){
   return new Promise(res=>{
     let done=false;
-    const go=()=>{ if(done) return; done=true; window.print(); res(); };
+    const go=()=>{ if(done) return; done=true;
+      try{ const t=document.getElementById('ticket'); if(t){ t.style.height='auto'; void t.offsetHeight; } }catch(e){} // fuerza recálculo del alto de página
+      window.print(); res(); };
     const imgs=[...document.querySelectorAll('#ticket img')];
     Promise.all(imgs.map(im=> (im.complete && im.naturalWidth) ? Promise.resolve()
                                 : new Promise(r=>{ im.onload=im.onerror=r; })))
-      .then(()=> setTimeout(go, 60));
+      .then(()=> setTimeout(go, 120));
     setTimeout(go, 900); // fallback por si la imagen no dispara onload
   });
 }
@@ -1594,8 +1596,10 @@ async function pollCola(){
         // Imprime CADA ticket del pedido como un trabajo separado:
         // así no hay salto de página (papel en blanco) y la impresora corta entre cada uno.
         const tickets=buildTicketsArray(j);
+        let _primero=true;
         for(const tkHtml of tickets){
           $('ticket').innerHTML=tkHtml;
+          if(_primero){ await sleepMs(250); _primero=false; }  // el primero necesita un instante para tomar el tamaño de página correcto
           try{ await printNow(); }catch(e){}
           await sleepMs(450);          // aire para impresoras lentas (Epson)
         }
