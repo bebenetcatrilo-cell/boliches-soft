@@ -269,8 +269,8 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   body *{visibility:hidden}
   .toast,#toast,.modal-bg,.drawer,.drawer-bg{display:none!important}
   #ticket,#ticket *{visibility:visible}
-  #ticket{display:block;position:absolute;left:0;top:0;width:68mm;color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px}
-  #ticket .tk{padding:6px 9px 10px}
+  #ticket{display:block;position:absolute;left:0;top:0;width:72mm;color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px}
+  #ticket .tk{padding:6px 4px 10px}
   #ticket .tc{text-align:center}
   #ticket .tr{display:flex;justify-content:space-between}
   #ticket hr{border:none;border-top:1px dashed #000;margin:4px 0}
@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.9";  // ← subir este número con cada cambio
+const VERSION = "9.1";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1163,7 +1163,7 @@ function printNow(){
     let done=false;
     const t=document.getElementById('ticket');
     const fire=()=>{ if(done) return; done=true;
-      try{ if(t) void t.offsetHeight; }catch(e){}   // recalcula layout
+      try{ if(t){ t.style.paddingLeft=offsetImpresora()+'mm'; void t.offsetHeight; } }catch(e){}   // corrimiento según impresora + recalcula layout
       window.print(); res(); };
     // espera a que cargue el logo y se acomode el layout, y luego imprime (siempre vertical, tamaño automático)
     const imgs=[...document.querySelectorAll('#ticket img')];
@@ -1516,6 +1516,12 @@ function esImpresoraEsteDispositivo(){ try{ return localStorage.getItem('bs_prin
 function normEstacion(s){ return (s||'').trim().toUpperCase(); }
 function miEstacion(){ try{ return normEstacion(localStorage.getItem('bs_estacion')||''); }catch(e){ return ''; } }
 function setMiEstacion(v){ try{ const n=normEstacion(v); if(n) localStorage.setItem('bs_estacion',n); else localStorage.removeItem('bs_estacion'); }catch(e){} }
+// Tipo de impresora por PC: cada marca imprime con un corrimiento distinto (precalibrado).
+const OFFSET_IMPRESORA={hasar:0, epson:5, otra:2}; // mm que se corre el ticket a la derecha
+function miImpresora(){ try{ return localStorage.getItem('bs_impresora')||'hasar'; }catch(e){ return 'hasar'; } }
+function setMiImpresora(v){ try{ localStorage.setItem('bs_impresora', v); }catch(e){} aplicarOffsetImpresora(); }
+function offsetImpresora(){ return OFFSET_IMPRESORA[miImpresora()]||0; }
+function aplicarOffsetImpresora(){ const t=document.getElementById('ticket'); if(t) t.style.paddingLeft=offsetImpresora()+'mm'; }
 function startPrinter(){ if(_estTimer) clearInterval(_estTimer); pollCola(); _estTimer=setInterval(pollCola,3000); }
 function stopPrinter(){ if(_estTimer){ clearInterval(_estTimer); _estTimer=null; } }
 
@@ -1683,12 +1689,32 @@ function admEstacion(){
       </div>
       <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.5rem 0 0">Si tenés <b>varias impresoras</b>, ponele un nombre a cada PC (ej: "BARRA 1", "BARRA 2", "ENTRADA"). Esta PC va a imprimir <b>solo</b> los tickets de las cajas asignadas a esta estación. <b>Dejalo vacío</b> si esta es la única impresora (imprime todo).</p>
     </div>
+    <div class="card" style="padding:1rem;margin-bottom:1rem">
+      <label style="font-weight:600;display:block;margin-bottom:.5rem">🏷️ Tipo de impresora</label>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn imp-opt ${miImpresora()==='hasar'?'btn-accent':'btn-soft'}" data-imp="hasar" onclick="elegirImpresora('hasar')" style="flex:1">Hasar</button>
+        <button class="btn imp-opt ${miImpresora()==='epson'?'btn-accent':'btn-soft'}" data-imp="epson" onclick="elegirImpresora('epson')" style="flex:1">Epson</button>
+        <button class="btn imp-opt ${miImpresora()==='otra'?'btn-accent':'btn-soft'}" data-imp="otra" onclick="elegirImpresora('otra')" style="flex:1">Otra</button>
+      </div>
+      <p class="muted" style="font-size:.78rem;line-height:1.4;margin:.5rem 0 0">Elegí la <b>marca de la impresora de esta PC</b>. El sistema ajusta solo el centrado del ticket para esa marca (la Epson necesita correrse un poco para que no corte). Se guarda en esta compu.</p>
+    </div>
     <div class="card" style="padding:.8rem">
       <div class="muted" style="font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">Últimos impresos</div>
       <div id="est-log" style="font-size:.82rem"><div class="est-ph muted">Esperando tickets…</div></div>
     </div>`;
   renderEstacion();
   if(on) startPrinter();
+}
+function elegirImpresora(v){
+  setMiImpresora(v);
+  // actualiza el resaltado de los botones
+  document.querySelectorAll('.imp-opt').forEach(b=>{
+    const sel=b.getAttribute('data-imp')===v;
+    b.className='btn imp-opt '+(sel?'btn-accent':'btn-soft')+(b.style.flex?'':'');
+    b.style.flex='1';
+  });
+  const nombres={hasar:'Hasar',epson:'Epson',otra:'Otra'};
+  toast('Impresora: '+(nombres[v]||v)+' · centrado ajustado','ok');
 }
 async function guardarMiEstacion(){
   const old=miEstacion();
