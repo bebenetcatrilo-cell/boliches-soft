@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "9.2";  // ← subir este número con cada cambio
+const VERSION = "9.3";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -2278,7 +2278,13 @@ async function delProd(id){
 }
 async function doDelProd(id){
   const {error}=await sb.from('productos').delete().eq('id',id);
-  if(error){ toast('No se pudo borrar. Mejor destildá "Activo" para ocultarlo.','err'); return; }
+  if(error){
+    // Tiene ventas asociadas: no se puede borrar sin romper el historial -> lo desactivamos.
+    const {error:e2}=await sb.from('productos').update({activo:false}).eq('id',id);
+    if(e2){ toast('No se pudo quitar','err'); return; }
+    closeModal(); toast('Tiene ventas: lo desactivé (queda oculto en la caja)','ok'); admProductos();
+    return;
+  }
   closeModal(); toast('Producto borrado','ok'); admProductos();
 }
 function prodModal(p){
