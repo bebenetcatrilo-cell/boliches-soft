@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.7";  // ← subir este número con cada cambio
+const VERSION = "8.8";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1162,27 +1162,11 @@ function printNow(){
   return new Promise(res=>{
     let done=false;
     const t=document.getElementById('ticket');
-    const m=document.getElementById('tmeasure');
-    if(m) m.innerHTML = t ? t.innerHTML : '';
     const fire=()=>{ if(done) return; done=true;
-      try{
-        // Mide el alto real del ticket y le fija a la impresora EXACTAMENTE ese largo de página.
-        // Así el primer ticket (en frío) ya no toma los 297mm de la Epson, y no se gasta papel de más.
-        const px=(m && m.offsetHeight) || 0;
-        const sp=document.getElementById('pageStyle');
-        if(sp){
-          if(px>0){
-            const mm=Math.max(28, Math.round(px/3.7795)+3); // +3mm de respiro para el corte
-            sp.textContent='@page{size:72mm '+mm+'mm;margin:0}';
-          } else {
-            sp.textContent='@page{size:72mm auto;margin:0}';
-          }
-        }
-        if(t){ void t.offsetHeight; }
-      }catch(e){}
+      try{ if(t) void t.offsetHeight; }catch(e){}   // recalcula layout
       window.print(); res(); };
-    // espera a que carguen las imágenes (logo) del ticket y del medidor, y a que el layout se acomode
-    const imgs=[...document.querySelectorAll('#ticket img, #tmeasure img')];
+    // espera a que cargue el logo y se acomode el layout, y luego imprime (siempre vertical, tamaño automático)
+    const imgs=[...document.querySelectorAll('#ticket img')];
     Promise.all(imgs.map(im=> (im.complete && im.naturalWidth) ? Promise.resolve()
                                 : new Promise(r=>{ im.onload=im.onerror=r; })))
       .then(()=> requestAnimationFrame(()=> requestAnimationFrame(()=> setTimeout(fire,120))));
