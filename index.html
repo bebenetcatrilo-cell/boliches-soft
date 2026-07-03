@@ -265,7 +265,6 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
 #tmeasure .tr{display:flex;justify-content:space-between}
 #tmeasure hr{border:none;border-top:1px dashed #000;margin:4px 0}
 #tmeasure .big{font-size:18px;font-weight:900}
-@page{size:72mm auto;margin:0}
 @media print{
   body *{visibility:hidden}
   .toast,#toast,.modal-bg,.drawer,.drawer-bg{display:none!important}
@@ -279,6 +278,7 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   #tmeasure{display:none!important}
 }
 </style>
+<style id="pageStyle">@page{size:72mm auto;margin:0}</style>
 </head>
 <body>
 
@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.6";  // ← subir este número con cada cambio
+const VERSION = "8.7";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1169,11 +1169,14 @@ function printNow(){
         // Mide el alto real del ticket y le fija a la impresora EXACTAMENTE ese largo de página.
         // Así el primer ticket (en frío) ya no toma los 297mm de la Epson, y no se gasta papel de más.
         const px=(m && m.offsetHeight) || 0;
-        if(px>0){
-          const mm=Math.max(28, Math.round(px/3.7795)+3); // +3mm de respiro para el corte
-          let sp=document.getElementById('dynPage');
-          if(!sp){ sp=document.createElement('style'); sp.id='dynPage'; document.head.appendChild(sp); }
-          sp.textContent='@page{size:72mm '+mm+'mm;margin:0}';
+        const sp=document.getElementById('pageStyle');
+        if(sp){
+          if(px>0){
+            const mm=Math.max(28, Math.round(px/3.7795)+3); // +3mm de respiro para el corte
+            sp.textContent='@page{size:72mm '+mm+'mm;margin:0}';
+          } else {
+            sp.textContent='@page{size:72mm auto;margin:0}';
+          }
         }
         if(t){ void t.offsetHeight; }
       }catch(e){}
