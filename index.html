@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "9.1";  // ← subir este número con cada cambio
+const VERSION = "9.2";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -2267,7 +2267,19 @@ async function admProductos(){
   body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="prodModal()">+ Nuevo producto</button>
     ${data.map(p=>`<div class="list-item"><div class="li-main"><div class="t">${p.nombre}</div><div class="s">${p.categoria} · ${p.activo?'activo':'inactivo'}</div></div>
       <div class="num" style="font-weight:600;margin-right:.5rem">${money(p.precio)}</div>
-      <button class="btn btn-ghost" style="min-height:38px" onclick='prodModal(${JSON.stringify(p)})'>Editar</button></div>`).join('')}`;
+      <button class="btn btn-ghost" style="min-height:38px" onclick='prodModal(${JSON.stringify(p)})'>Editar</button>
+      <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick='delProd(${p.id})'>🗑</button></div>`).join('')}`;
+}
+async function delProd(id){
+  modal(`<h3>¿Borrar producto?</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Se saca del catálogo de la caja. Las ventas ya hechas <b>no se tocan</b> (quedan en los reportes).</p>
+    <button class="btn btn-primary btn-block" style="background:var(--danger);border-color:var(--danger)" onclick="doDelProd(${id})">Sí, borrar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function doDelProd(id){
+  const {error}=await sb.from('productos').delete().eq('id',id);
+  if(error){ toast('No se pudo borrar. Mejor destildá "Activo" para ocultarlo.','err'); return; }
+  closeModal(); toast('Producto borrado','ok'); admProductos();
 }
 function prodModal(p){
   p=p||{categoria:'',nombre:'',precio:0,precio2:0,precio3:0,activo:true};
@@ -2301,8 +2313,20 @@ async function admCategorias(){
   const {data}=await sb.from('categorias').select('*').order('orden').order('nombre');
   body.innerHTML=`<button class="btn btn-primary btn-block" style="margin-bottom:1rem" onclick="categoriaModal()">+ Nueva categoría</button>
     ${(data||[]).map(c=>`<div class="list-item"><div class="li-main"><div class="t">${c.nombre}</div><div class="s">${c.activa?'Activa':'Inactiva'}</div></div>
-      <button class="btn btn-ghost" style="min-height:38px" onclick='categoriaModal(${JSON.stringify(c)})'>Editar</button></div>`).join('')}
+      <button class="btn btn-ghost" style="min-height:38px" onclick='categoriaModal(${JSON.stringify(c)})'>Editar</button>
+      <button class="btn btn-ghost" style="min-height:38px;color:#ff5a6e" onclick='delCat(${c.id})'>🗑</button></div>`).join('')}
     ${(!data||!data.length)?'<div class="empty">Creá tu primera categoría (ej: Tragos, Cervezas, Entrada).</div>':''}`;
+}
+async function delCat(id){
+  modal(`<h3>¿Borrar categoría?</h3>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Se borra la categoría. Los productos que la tengan siguen existiendo (podés cambiarles la categoría después).</p>
+    <button class="btn btn-primary btn-block" style="background:var(--danger);border-color:var(--danger)" onclick="doDelCat(${id})">Sí, borrar</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal()">Cancelar</button>`);
+}
+async function doDelCat(id){
+  const {error}=await sb.from('categorias').delete().eq('id',id);
+  if(error){ toast('No se pudo borrar la categoría','err'); return; }
+  closeModal(); toast('Categoría borrada','ok'); admCategorias();
 }
 function categoriaModal(c){
   c=c||{nombre:'',orden:0,activa:true};
