@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "9.3";  // ← subir este número con cada cambio
+const VERSION = "9.4";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
@@ -1473,7 +1473,9 @@ async function admCerrarModal(cajaId){
   const ingresos=(movs||[]).filter(m=>m.tipo==='ingreso').reduce((s,m)=>s+Number(m.monto),0);
   const egresos=(movs||[]).filter(m=>m.tipo==='egreso').reduce((s,m)=>s+Number(m.monto),0);
   const esp=Number(caja.monto_inicial)+efectivo+ingresos-egresos-anuladoEf;
-  ST._cierreAdmin={cajaId,esp};
+  const porPago={}; let totalVentas=0;
+  (ventas||[]).forEach(v=>{ const f=v.forma_pago||'otro'; porPago[f]=(porPago[f]||0)+Number(v.total); totalVentas+=Number(v.total); });
+  ST._cierreAdmin={cajaId,esp,barra:barra?barra.nombre:'',inicial:Number(caja.monto_inicial)||0,estacion:caja.estacion_destino||'',porPago,totalVentas,ingresos,egresos};
   modal(`<h3>Cerrar caja · ${barra?barra.nombre:''}</h3>
     <p class="muted" style="font-size:.85rem;margin-bottom:1rem">Contá el efectivo de la caja y cargá el total.</p>
     <div class="list-item"><div class="li-main"><div class="t">Efectivo esperado</div></div><div class="num" style="font-weight:600;color:var(--cash)">${money(esp)}</div></div>
@@ -1486,9 +1488,27 @@ async function admDoCerrar(){
   const contado=parseFloat($('ac-contado').value)||0;
   const dif=contado-cc.esp;
   await sb.from('caja').update({estado:'cerrada',monto_contado:contado,diferencia:dif,fecha_cierre:new Date().toISOString()}).eq('id',cc.cajaId);
-  closeModal();
+  cc.contado=contado; cc.diferencia=dif; ST._cierreAdmin=cc;
   const txt=dif===0?'Caja cerrada justa.':(dif>0?`Sobró ${money(dif)}.`:`Faltó ${money(Math.abs(dif))}.`);
-  toast('Caja cerrada · '+txt,'ok'); admCajas();
+  modal(`<h3>Caja cerrada</h3>
+    <p style="margin-bottom:1rem;font-weight:600">${txt}</p>
+    <p class="muted" style="font-size:.85rem;margin-bottom:1rem">¿Querés imprimir el ticket de cierre?</p>
+    <button class="btn btn-primary btn-block" onclick="imprimirCierre()">🖨️ Imprimir cierre</button>
+    <button class="btn btn-ghost btn-block" style="margin-top:.5rem" onclick="closeModal();admCajas()">No imprimir</button>`);
+}
+async function imprimirCierre(){
+  const cc=ST._cierreAdmin||{};
+  const porPago=Object.entries(cc.porPago||{}).map(([forma,monto])=>({forma,monto}));
+  const payload={ kind:'cierre_caja', barra:cc.barra||'', fecha:new Date().toLocaleString('es-AR'),
+    inicial:cc.inicial||0, efectivoEsperado:cc.esp||0, contado:cc.contado||0, diferencia:cc.diferencia||0,
+    totalVentas:cc.totalVentas||0, porPago, ingresos:cc.ingresos||0, egresos:cc.egresos||0 };
+  try{
+    const {error}=await sb.from('impresiones').insert({tipo:'ticket',estado:'pendiente',
+      estacion: normEstacion(cc.estacion)||null, payload});
+    if(error) throw error;
+    toast('Cierre enviado a imprimir','ok');
+  }catch(e){ toast('No se pudo enviar a imprimir','err'); }
+  closeModal(); admCajas();
 }
 
 /* ---------- ADMIN ---------- */
@@ -1569,6 +1589,26 @@ function buildTicketsArray(j){
       <div class="tc" style="font-size:11px">${hoy}</div>
       <div class="tc" style="font-size:10px">${v.numero||''}</div>
       <div class="tc" style="font-size:10px">${hora}</div></div>`);
+    return out;
+  }
+  if(p.kind==='cierre_caja'){
+    const f=(l,v)=>`<div class="tr" style="font-size:12px"><span>${l}</span><span>${money(v)}</span></div>`;
+    let pagos='';
+    (p.porPago||[]).forEach(x=>{ pagos+=`<div class="tr" style="font-size:11px"><span>${(x.forma||'').toUpperCase()}</span><span>${money(x.monto)}</span></div>`; });
+    out.push(`<div class="tk">${cab()}<hr>
+      <div class="tc big">CIERRE DE CAJA</div>
+      <div class="tc">${p.barra||''}</div><hr>
+      ${f('Fondo inicial', p.inicial)}
+      ${f('Total ventas', p.totalVentas)}
+      ${pagos?('<hr><div class="tc" style="font-size:10px">POR MEDIO DE PAGO</div>'+pagos):''}
+      ${p.ingresos?f('Ingresos', p.ingresos):''}
+      ${p.egresos?f('Egresos', p.egresos):''}
+      <hr>
+      ${f('Efectivo esperado', p.efectivoEsperado)}
+      ${f('Efectivo contado', p.contado)}
+      ${f(p.diferencia>=0?'Sobrante':'Faltante', Math.abs(p.diferencia))}
+      <hr>
+      <div class="tc" style="font-size:10px">${p.fecha||''}</div></div>`);
     return out;
   }
   tks.forEach((v,idx)=>{
