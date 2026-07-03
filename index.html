@@ -269,8 +269,8 @@ label{display:block;font-size:.8rem;color:var(--muted);margin:0 0 .35rem;font-we
   body *{visibility:hidden}
   .toast,#toast,.modal-bg,.drawer,.drawer-bg{display:none!important}
   #ticket,#ticket *{visibility:visible}
-  #ticket{display:block;position:absolute;left:0;top:0;width:72mm;color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px}
-  #ticket .tk{padding:6px 4px 10px}
+  #ticket{display:block;position:absolute;left:0;top:0;width:68mm;color:#000;font-family:'Arial Black','Arial Narrow',Arial,sans-serif;font-weight:900;font-size:15px}
+  #ticket .tk{padding:6px 9px 10px}
   #ticket .tc{text-align:center}
   #ticket .tr{display:flex;justify-content:space-between}
   #ticket hr{border:none;border-top:1px dashed #000;margin:4px 0}
@@ -465,7 +465,7 @@ const PASE_URL  = "https://qsujozmldskkjsiialch.supabase.co";
 const PASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFzdWpvem1sZHNra2pzaWlhbGNoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTgyOTYsImV4cCI6MjA5MjQzNDI5Nn0.jLoDvhp-2NEXPvFXY4NOM2-3mqZGP3aUiKFJDoJSyRw";
 const sbPase = supabase.createClient(PASE_URL, PASE_ANON);
 
-const VERSION = "8.8";  // ← subir este número con cada cambio
+const VERSION = "8.9";  // ← subir este número con cada cambio
 
 const BAR_COLORS = ['#FF2E88','#14E0C8','#FFB020','#7C5CFF','#2EE6A8','#FF6B4D','#4DA6FF','#FF4DD8'];
 const PAGOS = [
