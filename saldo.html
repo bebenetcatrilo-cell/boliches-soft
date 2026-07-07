@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0a0710">
+<title>Wikend · Mi saldo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0710; --bg2:#120a1c;
+    --fucsia:#FF2E88; --cyan:#14E0C8; --amber:#FFB020;
+    --ink:#F4EEF7; --muted:#9a8fa8; --line:rgba(255,255,255,.08);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(255,46,136,.18), transparent 60%),
+      radial-gradient(900px 500px at 80% 110%, rgba(20,224,200,.12), transparent 55%),
+      var(--bg);
+    color:var(--ink); font-family:'Inter',system-ui,sans-serif;
+    min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+    padding:26px 20px 40px; overflow-x:hidden;
+  }
+  .wrap{width:100%;max-width:440px;margin:auto 0;display:flex;flex-direction:column;align-items:center}
+
+  /* Marca */
+  .mark{font-family:'Space Grotesk';font-weight:700;font-size:44px;line-height:1;letter-spacing:-.02em;
+    color:#fff;filter:drop-shadow(0 0 18px rgba(255,46,136,.5))}
+  .kicker{margin-top:10px;font-family:'Space Grotesk';font-weight:600;font-size:.72rem;
+    letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
+
+  /* Escáner / lente */
+  .stage{width:100%;margin-top:30px;display:flex;flex-direction:column;align-items:center}
+  .lens{
+    position:relative;width:220px;height:220px;border-radius:26px;
+    background:linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.01));
+    border:1px solid var(--line); display:flex;align-items:center;justify-content:center;
+    overflow:hidden;
+  }
+  .lens .corner{position:absolute;width:34px;height:34px;border:2.5px solid var(--cyan);opacity:.9}
+  .lens .c1{top:14px;left:14px;border-right:0;border-bottom:0;border-radius:12px 0 0 0}
+  .lens .c2{top:14px;right:14px;border-left:0;border-bottom:0;border-radius:0 12px 0 0}
+  .lens .c3{bottom:14px;left:14px;border-right:0;border-top:0;border-radius:0 0 0 12px}
+  .lens .c4{bottom:14px;right:14px;border-left:0;border-top:0;border-radius:0 0 12px 0}
+  .lens .glyph{font-size:64px;filter:grayscale(1) opacity(.5)}
+  #reader{width:100%;height:100%}
+  #reader video{object-fit:cover !important;border-radius:24px}
+  .scanline{position:absolute;left:8%;right:8%;height:2px;top:0;
+    background:linear-gradient(90deg,transparent,var(--fucsia),transparent);
+    box-shadow:0 0 14px var(--fucsia);animation:sweep 2.4s ease-in-out infinite}
+  @keyframes sweep{0%{top:12%}50%{top:86%}100%{top:12%}}
+
+  .hint{margin-top:20px;color:var(--muted);font-size:.92rem;text-align:center;max-width:300px;line-height:1.5}
+
+  .btn{appearance:none;border:0;cursor:pointer;font-family:'Space Grotesk';font-weight:600;
+    font-size:1.02rem;border-radius:16px;padding:16px 22px;width:100%;transition:transform .12s, filter .2s}
+  .btn:active{transform:translateY(1px) scale(.99)}
+  .btn-primary{background:linear-gradient(180deg,var(--fucsia),#e01f74);color:#fff;
+    box-shadow:0 10px 30px rgba(255,46,136,.35)}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--line);font-weight:500;font-size:.92rem;padding:13px}
+  .actions{width:100%;margin-top:30px;display:flex;flex-direction:column;gap:12px}
+
+  /* Resultado */
+  .result{width:100%;display:none;flex-direction:column;align-items:center;text-align:center}
+  .result.show{display:flex;animation:rise .5s cubic-bezier(.2,.7,.2,1)}
+  @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .saldo-lbl{font-family:'Space Grotesk';font-weight:600;font-size:.72rem;letter-spacing:.3em;
+    text-transform:uppercase;color:var(--cyan);margin-bottom:6px}
+  .saldo{font-family:'Space Grotesk';font-weight:700;font-size:clamp(56px,17vw,84px);line-height:1;
+    letter-spacing:-.03em;color:#fff;text-shadow:0 0 34px rgba(20,224,200,.45)}
+  .saldo .cents{font-size:.5em;color:var(--muted)}
+  .msg{margin-top:14px;color:var(--muted);font-size:.95rem;max-width:320px;line-height:1.5}
+  .card-badge{margin-top:22px;font-size:.75rem;color:var(--muted);opacity:.7;word-break:break-all;
+    font-family:'Space Grotesk';letter-spacing:.04em}
+
+  /* Movimientos */
+  .movs{width:100%;margin-top:28px;text-align:left}
+  .movs-ttl{font-family:'Space Grotesk';font-weight:600;font-size:.72rem;letter-spacing:.28em;
+    text-transform:uppercase;color:var(--muted);margin-bottom:12px;padding-left:2px}
+  .mov{display:flex;align-items:flex-start;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+  .mov:last-child{border-bottom:0}
+  .mov-ic{width:34px;height:34px;flex:0 0 34px;border-radius:10px;display:flex;align-items:center;justify-content:center;
+    font-size:1rem;margin-top:1px}
+  .mov-ic.in{background:rgba(20,224,200,.14);color:var(--cyan)}
+  .mov-ic.out{background:rgba(255,46,136,.14);color:var(--fucsia)}
+  .mov-mid{flex:1;min-width:0}
+  .mov-t{font-weight:500;font-size:.95rem;color:var(--ink);line-height:1.3}
+  .mov-s{font-size:.78rem;color:var(--muted);margin-top:2px}
+  .mov-amt{font-family:'Space Grotesk';font-weight:700;font-size:1rem;white-space:nowrap;margin-top:1px}
+  .mov-amt.in{color:var(--cyan)} .mov-amt.out{color:#ff6b8f}
+  .movs-empty{color:var(--muted);font-size:.9rem;text-align:center;padding:14px 0}
+
+  .spin{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.15);
+    border-top-color:var(--fucsia);animation:rot .8s linear infinite}
+  @keyframes rot{to{transform:rotate(360deg)}}
+
+  .manual{width:100%;margin-top:6px;display:none}
+  .manual.show{display:block}
+  .manual input{width:100%;background:rgba(255,255,255,.05);border:1px solid var(--line);
+    color:var(--ink);border-radius:14px;padding:14px;font-size:1rem;font-family:'Space Grotesk';letter-spacing:.02em}
+  .manual input:focus{outline:none;border-color:var(--fucsia)}
+
+  .foot{margin-top:34px;color:var(--muted);font-size:.72rem;opacity:.55;text-align:center;letter-spacing:.02em}
+
+  @media (prefers-reduced-motion: reduce){
+    .scanline{animation:none;display:none}
+    .result.show{animation:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mark">W</div>
+  <div class="kicker">Tarjeta · Saldo</div>
+
+  <!-- ESTADO: inicio / escaneo -->
+  <div class="stage" id="stage">
+    <div class="lens" id="lens">
+      <span class="corner c1"></span><span class="corner c2"></span>
+      <span class="corner c3"></span><span class="corner c4"></span>
+      <span class="glyph" id="glyph">💠</span>
+      <div id="reader" style="display:none"></div>
+      <div class="scanline" id="scanline" style="display:none"></div>
+    </div>
+    <p class="hint" id="hint">Apuntá la cámara al código QR de tu tarjeta para ver tu saldo.</p>
+    <div class="actions">
+      <button class="btn btn-primary" id="btn-scan" onclick="startScan()">📷 Escanear mi tarjeta</button>
+      <button class="btn btn-ghost" id="btn-manual" onclick="toggleManual()">Ingresar el código a mano</button>
+      <div class="manual" id="manual">
+        <input id="code-input" placeholder="Pegá o escribí el código" autocomplete="off" autocapitalize="off" spellcheck="false"
+          onkeydown="if(event.key==='Enter'){consultar(this.value)}">
+        <button class="btn btn-primary" style="margin-top:10px" onclick="consultar(document.getElementById('code-input').value)">Ver saldo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ESTADO: cargando -->
+  <div class="stage" id="loading" style="display:none">
+    <div class="spin"></div>
+    <p class="hint">Buscando tu saldo…</p>
+  </div>
+
+  <!-- ESTADO: resultado -->
+  <div class="result" id="result">
+    <div id="result-body"></div>
+    <div class="actions">
+      <button class="btn btn-ghost" onclick="reset()">Consultar otra tarjeta</button>
+    </div>
+  </div>
+
+  <div class="foot">Wikend · el saldo se actualiza al instante en la barra</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+  const SUPABASE_URL  = "https://gakgvcsksskzemzomhkp.supabase.co";
+  const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdha2d2Y3Nrc3NremVtem9taGtwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTYxNjksImV4cCI6MjA5NzM3MjE2OX0.vtG6HJQK4HAbqwF2h4WRK-3-M-FLTa4Tv_1AkgTKkJs";
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+  // Guardamos/buscamos por letras y números solamente (USB y cámara coinciden).
+  function limpiar(raw){
+    return String(raw||'').replace(/[^A-Za-z0-9]/g,'');
+  }
+  const $ = id => document.getElementById(id);
+  const money = n => '$'+Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:0});
+
+  let cam=null, camOn=false, lastCode='', lastT=0;
+
+  function show(which){
+    $('stage').style.display   = which==='stage'   ? 'flex':'none';
+    $('loading').style.display = which==='loading' ? 'flex':'none';
+    $('result').className      = which==='result'  ? 'result show':'result';
+  }
+  function toggleManual(){ $('manual').classList.toggle('show'); const i=$('code-input'); if(i) i.focus(); }
+
+  async function startScan(){
+    if(camOn){ return; }
+    $('glyph').style.display='none';
+    $('reader').style.display='block';
+    $('scanline').style.display='block';
+    $('btn-scan').textContent='Escaneando…';
+    $('hint').textContent='Centrá el QR dentro del recuadro.';
+    try{
+      cam = new Html5Qrcode('reader');
+      camOn = true;
+      await cam.start({facingMode:'environment'}, {fps:10, qrbox:{width:180,height:180}},
+        (txt)=>{ onCode(txt); }, ()=>{});
+    }catch(e){
+      camOn=false;
+      $('reader').style.display='none';
+      $('scanline').style.display='none';
+      $('glyph').style.display='block';
+      $('btn-scan').textContent='📷 Escanear mi tarjeta';
+      $('hint').textContent='No se pudo abrir la cámara. Probá "Ingresar el código a mano".';
+      $('manual').classList.add('show');
+    }
+  }
+  function stopScan(){
+    if(cam && camOn){ try{ cam.stop().then(()=>{try{cam.clear()}catch(e){}}).catch(()=>{}); }catch(e){} }
+    camOn=false;
+  }
+  function onCode(txt){
+    const code=limpiar(txt); if(!code) return;
+    const now=Date.now();
+    if(code===lastCode && now-lastT<2500) return;
+    lastCode=code; lastT=now;
+    stopScan();
+    consultar(code);
+  }
+
+  async function consultar(raw){
+    const qr=limpiar(raw);
+    if(!qr){ return; }
+    show('loading');
+    try{
+      const {data,error}=await sb.rpc('tarjeta_saldo',{p_qr:qr});
+      if(error) throw error;
+      const r=data||{};
+      if(!r.existe){
+        renderResult(`
+          <div class="saldo-lbl" style="color:var(--amber)">Sin activar</div>
+          <div class="saldo" style="font-size:clamp(30px,9vw,42px);text-shadow:none">Esta tarjeta<br>no tiene saldo</div>
+          <p class="msg">Acercate a la barra para cargarle crédito y empezar a usarla.</p>
+          <div class="card-badge">${qr}</div>`);
+        return;
+      }
+      const activaTxt = r.activa ? '' : '<p class="msg" style="color:var(--amber)">⚠️ Tarjeta desactivada. Consultá en la barra.</p>';
+      const movsHTML = await cargarMovimientos(qr);
+      renderResult(`
+        <div class="saldo-lbl">Tu saldo</div>
+        <div class="saldo">${money(r.saldo)}</div>
+        ${activaTxt}
+        <p class="msg">Podés gastarlo en cualquier barra de Wikend. Se descuenta al instante.</p>
+        ${movsHTML}`);
+    }catch(e){
+      renderResult(`
+        <div class="saldo-lbl" style="color:var(--amber)">Ups</div>
+        <div class="saldo" style="font-size:clamp(28px,8vw,38px);text-shadow:none">No pudimos<br>leer el saldo</div>
+        <p class="msg">Revisá tu conexión y probá de nuevo.</p>`);
+    }
+  }
+  function renderResult(html){ $('result-body').innerHTML=html; show('result'); }
+
+  function fmtFecha(iso){
+    try{ const d=new Date(iso);
+      return d.toLocaleDateString('es-AR',{day:'2-digit',month:'2-digit'})+' · '+d.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    }catch(e){ return ''; }
+  }
+  async function cargarMovimientos(qr){
+    let movs=[];
+    try{
+      const {data,error}=await sb.rpc('tarjeta_movimientos_list',{p_qr:qr,p_limit:25});
+      if(!error && data && data.movimientos) movs=data.movimientos;
+    }catch(e){}
+    let filas;
+    if(!movs.length){
+      filas='<div class="movs-empty">Todavía no tenés movimientos.</div>';
+    }else{
+      filas=movs.map(m=>{
+        const carga=(m.tipo==='carga');
+        const cls=carga?'in':'out';
+        const titulo=carga?'Cargaste saldo':(m.ref||'Compra en la barra');
+        return `<div class="mov">
+          <div class="mov-ic ${cls}">${carga?'↑':'↓'}</div>
+          <div class="mov-mid">
+            <div class="mov-t">${titulo}</div>
+            <div class="mov-s">${fmtFecha(m.created_at)} · saldo ${money(m.saldo_post)}</div>
+          </div>
+          <div class="mov-amt ${cls}">${carga?'+':'−'}${money(m.monto)}</div>
+        </div>`;
+      }).join('');
+    }
+    return `<div class="movs"><div class="movs-ttl">Tus movimientos</div>${filas}</div>`;
+  }
+
+  function reset(){
+    lastCode=''; lastT=0;
+    $('glyph').style.display='block';
+    $('reader').style.display='none';
+    $('scanline').style.display='none';
+    $('btn-scan').textContent='📷 Escanear mi tarjeta';
+    $('hint').textContent='Apuntá la cámara al código QR de tu tarjeta para ver tu saldo.';
+    $('manual').classList.remove('show');
+    const i=$('code-input'); if(i) i.value='';
+    show('stage');
+  }
+
+  // Si el QR alguna vez apunta a esta página con ?qr=TOKEN, autoconsulta.
+  (function(){
+    const p=new URLSearchParams(location.search);
+    const q=p.get('qr');
+    if(q) consultar(q);
+  })();
+</script>
+</body>
+</html>
