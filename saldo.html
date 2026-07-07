@@ -68,6 +68,7 @@
   .result{width:100%;display:none;flex-direction:column;align-items:center;text-align:center}
   .result.show{display:flex;animation:rise .5s cubic-bezier(.2,.7,.2,1)}
   @keyframes rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+  .saludo{font-family:'Space Grotesk';font-weight:600;font-size:1.05rem;color:var(--ink);margin-bottom:16px;opacity:.95}
   .saldo-lbl{font-family:'Space Grotesk';font-weight:600;font-size:.72rem;letter-spacing:.3em;
     text-transform:uppercase;color:var(--cyan);margin-bottom:6px}
   .saldo{font-family:'Space Grotesk';font-weight:700;font-size:clamp(56px,17vw,84px);line-height:1;
@@ -168,6 +169,7 @@
   }
   const $ = id => document.getElementById(id);
   const money = n => '$'+Number(n||0).toLocaleString('es-AR',{maximumFractionDigits:0});
+  const esc = s => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
   let cam=null, camOn=false, lastCode='', lastT=0;
 
@@ -230,8 +232,11 @@
         return;
       }
       const activaTxt = r.activa ? '' : '<p class="msg" style="color:var(--amber)">⚠️ Tarjeta desactivada. Consultá en la barra.</p>';
+      const titular = [r.nombre, r.apellido].filter(Boolean).join(' ').trim();
+      const saludo = titular ? `<div class="saludo">Hola, ${esc(titular)} 👋</div>` : '';
       const movsHTML = await cargarMovimientos(qr);
       renderResult(`
+        ${saludo}
         <div class="saldo-lbl">Tu saldo</div>
         <div class="saldo">${money(r.saldo)}</div>
         ${activaTxt}
